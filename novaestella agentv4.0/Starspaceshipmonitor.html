@@ -666,7 +666,7 @@
         </div>
     </div>
     <!--我的浏览器-->
-    <div id="browser-widget" class="work-widget" display: none;">
+    <div id="browser-widget" class="work-widget" style="display: none;">
     
     <div class="widget-header" id="browser-drag-handle">
         <span><i class="fas fa-globe"></i> NOVELLA WEB INTERFACE</span>
@@ -674,17 +674,19 @@
     </div>
     
     <div id="web-controls-bar">
-        <input type="text" id="web-address-bar" placeholder="Enter URL (e.g., wikipedia.org)..." />
+        <input type="text" id="web-address-bar" placeholder="Enter URL or search keyword..." />
+        
+        <button id="web-go-btn" onclick="loadURL(document.getElementById('web-address-bar').value)">GO</button>
     </div> 
     
    <iframe 
-    id="embedded-iframe" 
-    src="about:blank"
-    
-    /* 关键修正：如果存在 sandbox 属性，请确保它包含以下权限 */
-    sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation"
-    
-></iframe>
+   id="embedded-iframe" 
+   src="about:blank"
+   
+   /* 关键修正：sandbox 属性应确保包含 allow-popups，以便允许新窗口弹出 */
+   sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation"
+   
+   ></iframe>
     
 </div>
   <!--我的浏览器-->
@@ -891,10 +893,9 @@
         }
     }
 
-    /**
- /**
- /**
- * 加载 URL 到 iframe 中。对于外部网站（被拒绝嵌入的），使用新窗口打开。
+   /**
+ * 加载 URL 到 iframe 中。对于外部网站，使用 window.open() 在新窗口中打开，
+ * 以绕过 X-Frame-Options/CSP 限制。
  * @param {string} url - 用户输入的 URL。
  */
 function loadURL(url) {
@@ -906,7 +907,7 @@ function loadURL(url) {
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && targetUrl !== 'about:blank') {
         // 如果输入包含空格或不是一个明显的域名（如关键字），则视为搜索
         if (targetUrl.includes(' ') || !targetUrl.includes('.')) { 
-             // 转换为 DuckDuckGo 搜索链接 (或您选择的其他搜索引擎)
+             // 转换为 DuckDuckGo 搜索链接
              targetUrl = `https://duckduckgo.com/?q=${encodeURIComponent(targetUrl)}`;
         } else {
             // 视为域名，添加 https://
@@ -915,21 +916,20 @@ function loadURL(url) {
     }
     
     // 2. 判断是否为外部链接
-    // 任何以 http/https 开头且不是 about:blank 的链接，我们都视作外部网站
     const isExternalWeb = targetUrl.startsWith('http') && targetUrl !== 'about:blank';
     
     if (isExternalWeb) {
-        // 【关键修正】：使用新窗口打开外部链接，彻底绕过 iframe 嵌入限制
+        // 【核心修正】：使用新窗口打开外部链接
+        // 只有当 window.open() 由用户直接操作触发时，才不会被浏览器阻止。
         window.open(targetUrl, '_blank');
         
-        // 保持 iframe 的状态，避免显示 "拒绝连接" 的错误界面
+        // 可选：重置 iframe 内容，避免显示“拒绝连接”的错误
         if (iframe && iframe.src !== 'about:blank') {
-             // 可选：将 iframe 内容重置或保持不动
-             iframe.src = 'about:blank';
+             iframe.src = 'about:blank'; 
         }
 
         if (typeof sysLog === 'function') {
-            sysLog(`WEB: Link opened in new window: ${targetUrl.substring(0, 50)}...`, "DAT");
+            sysLog(`WEB: External link opened in new window: ${targetUrl.substring(0, 50)}...`, "DAT");
         }
         
     } else {
@@ -1310,37 +1310,52 @@ function initBrowserControls() {
     const dragHandle = document.getElementById('browser-drag-handle');
     const browserWidget = document.getElementById('browser-widget');
     
+    // 【新增】：获取 GO 按钮元素
+    const goButton = document.getElementById('web-go-btn'); 
+    
     // 1. Logo 点击事件
-    browserLogo.addEventListener('click', () => toggleBrowser());
+    if (browserLogo) {
+        browserLogo.addEventListener('click', () => toggleBrowser());
+    }
 
     // 2. 地址栏加载事件 (Enter 键)
-    addressBar.addEventListener('keyup', (e) => {
-        if (e.key === 'Enter') {
-            loadURL(addressBar.value);
-            addressBar.blur();
-        }
-    });
+    // 确保 GO 按钮和地址栏都存在
+    if (addressBar && goButton) { 
+        addressBar.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault(); // 阻止默认的提交行为
+                
+                // 【核心修正】：不再直接调用 loadURL，而是模拟点击 GO 按钮
+                // 这将使浏览器认为 window.open() 是由用户直接操作触发的。
+                goButton.click(); 
+                
+                addressBar.blur();
+            }
+        });
+    }
 
     // 3. 浮窗拖动逻辑 (重用 widget-header 上的 move 光标)
-    dragHandle.addEventListener('mousedown', (e) => {
-        // 阻止点击地址栏时触发拖动
-        if (e.target.id === 'web-address-bar' || e.target.classList.contains('widget-close')) {
-            return;
-        }
-        
-        isBrowserDragging = true;
-        dragElement = browserWidget;
-        
-        // 获取鼠标点击位置与浮窗左上角的位置差
-        dragStartX = e.clientX - browserWidget.offsetLeft;
-        dragStartY = e.clientY - browserWidget.offsetTop;
-        
-        dragHandle.style.cursor = 'grabbing';
-        e.preventDefault(); 
-    });
+    if (dragHandle && browserWidget) {
+        dragHandle.addEventListener('mousedown', (e) => {
+            // 阻止点击地址栏、GO 按钮或关闭按钮时触发拖动
+            if (e.target.id === 'web-address-bar' || e.target.id === 'web-go-btn' || e.target.classList.contains('widget-close')) {
+                return;
+            }
+            
+            isBrowserDragging = true;
+            dragElement = browserWidget;
+            
+            // 获取鼠标点击位置与浮窗左上角的位置差
+            dragStartX = e.clientX - browserWidget.offsetLeft;
+            dragStartY = e.clientY - browserWidget.offsetTop;
+            
+            dragHandle.style.cursor = 'grabbing';
+            e.preventDefault(); 
+        });
+    }
 }
 
-// 4. 全局鼠标事件监听器 (应用于所有可拖动部件，如果它们没有自己的逻辑)
+// 4. 全局鼠标事件监听器 (保持不变，因为它们引用了全局变量)
 document.addEventListener('mousemove', (e) => {
     if (!isBrowserDragging || !dragElement) return;
 
@@ -1359,11 +1374,14 @@ document.addEventListener('mousemove', (e) => {
 document.addEventListener('mouseup', () => {
     if (isBrowserDragging) {
         isBrowserDragging = false;
-        document.getElementById('browser-drag-handle').style.cursor = 'move';
+        // 确保元素存在再修改 cursor
+        const handle = document.getElementById('browser-drag-handle');
+        if (handle) {
+            handle.style.cursor = 'move';
+        }
         dragElement = null;
     }
 });
-
 
 // 5. 确保在系统启动或 DOMContentLoaded 后初始化控件
 // **注意:** 请将此函数调用添加到您的 `systemBoot()` 函数末尾或其他合适的初始化位置。

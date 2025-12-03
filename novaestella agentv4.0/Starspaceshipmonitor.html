@@ -593,6 +593,72 @@
         
         @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
         @keyframes pulseBar { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; box-shadow: 0 0 15px var(--star-glow); } }
+
+        /* --- 自定义鼠标光标 (十字星光标) --- */
+/* 注意：此样式需要一个ID为 #custom-cursor 的DIV元素来接收鼠标位置 */
+#custom-cursor {
+    position: absolute;
+    width: 25px; /* 光标大小 */
+    height: 25px;
+    
+    /* 初始定位和层级 */
+    transform: translate(-50%, -50%); 
+    pointer-events: none; /* 确保不影响点击下面的元素 */
+    z-index: 9999;
+    display: none; /* 默认隐藏，由 JS 控制显示 */
+    
+    /* 样式：十字星效果 */
+    /* 青蓝色中心圆 */
+    border: 1px solid var(--star-glow);
+    border-radius: 50%;
+    
+    /* 核心：青蓝色光晕和橙色辅助光晕 */
+    box-shadow: 
+        0 0 5px var(--star-blue),     /* 较近的青蓝光 */
+        0 0 10px var(--star-glow),    /* 远处的亮光 */
+        0 0 15px var(--star-orange);  /* 橙色光晕 */
+}
+
+/* 垂直线和水平线（模拟十字星） */
+#custom-cursor::before,
+#custom-cursor::after {
+    content: '';
+    position: absolute;
+    background: var(--star-blue);
+    opacity: 0.8;
+    box-shadow: 0 0 5px var(--star-blue);
+}
+
+/* 水平线 */
+#custom-cursor::before {
+    width: 100%;
+    height: 1px;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+}
+
+/* 垂直线 */
+#custom-cursor::after {
+    width: 1px;
+    height: 100%;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+/* 悬停/点击时的动态效果 (可选) */
+/* 当鼠标悬停在可点击元素上时，可以在 JS 中为光标添加 .active 类 */
+#custom-cursor.active {
+    width: 30px;
+    height: 30px;
+    /* 强化橙色光，模拟“点击就绪”状态 */
+    box-shadow: 
+        0 0 5px var(--star-blue),
+        0 0 10px var(--star-glow),
+        0 0 25px var(--star-orange-glow); /* 强化橙色光 */
+    border-color: var(--star-orange);
+}
     </style>
 </head>
 <body>
@@ -601,7 +667,7 @@
 <canvas id="hand-canvas"></canvas>
 <div id="vignette"></div>
 <div id="hand-cursor"></div>
-
+<div id="custom-cursor"></div>
 <div id="boot-screen">
             <button class="boot-btn" id="start-btn" onclick="systemBoot()">INITIATE STARSHIP HMI</button>
     <div id="boot-log" style="margin-top:20px; font-size:15px; color:var(--star-blue); display:none; text-align:center;">
@@ -2051,7 +2117,26 @@ document.addEventListener('mouseup', () => {
             calendarBody.appendChild(dayElement);
         }
     }
-
+document.addEventListener('mousemove', (e) => {
+    // 确保您在 HTML 中添加了一个 id="custom-cursor" 的 div 元素
+    const customCursor = document.getElementById('custom-cursor'); 
+    
+    if (customCursor) {
+        // 更新光标位置为鼠标的客户端坐标
+        customCursor.style.left = e.clientX + 'px';
+        customCursor.style.top = e.clientY + 'px';
+        
+        // 确保光标是可见的 (如果 CSS 中默认是 display: none)
+        customCursor.style.display = 'block'; 
+        
+        // 确保当鼠标移动时，您的 MediaPipe 手势光标 (#hand-cursor) 被隐藏，
+        // 以防两者同时出现而产生冲突。
+        const handCursor = document.getElementById('hand-cursor');
+        if (handCursor) {
+            handCursor.style.display = 'none';
+        }
+    }
+});
    // --- BOOT ---
 // --- CORE BOOT FUNCTION ---
 async function systemBoot() {

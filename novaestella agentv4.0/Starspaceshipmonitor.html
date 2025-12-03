@@ -893,7 +893,8 @@
 
     /**
  /**
- * 加载新的 URL 到 iframe 中，但对于外部主要网站，则在新窗口中打开。
+ /**
+ * 加载 URL 到 iframe 中。对于外部网站（被拒绝嵌入的），使用新窗口打开。
  * @param {string} url - 用户输入的 URL。
  */
 function loadURL(url) {
@@ -901,42 +902,44 @@ function loadURL(url) {
     const iframe = document.getElementById('embedded-iframe');
     const addressBar = document.getElementById('web-address-bar');
 
-    // 假设您只允许在 iframe 中加载非常有限的内部或本地资源。
-    // 对于大多数外部网站，我们使用新窗口打开。
-    
-    // 1. 尝试修正 URL 协议（如果用户只输入了域名）
+    // 1. URL 格式修正和搜索转换
     if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && targetUrl !== 'about:blank') {
-        // 如果输入包含空格或不是一个明显的域名，我们将其视为搜索
-        if (targetUrl.includes(' ') || !targetUrl.includes('.')) {
-             // 转换为 DuckDuckGo 搜索
+        // 如果输入包含空格或不是一个明显的域名（如关键字），则视为搜索
+        if (targetUrl.includes(' ') || !targetUrl.includes('.')) { 
+             // 转换为 DuckDuckGo 搜索链接 (或您选择的其他搜索引擎)
              targetUrl = `https://duckduckgo.com/?q=${encodeURIComponent(targetUrl)}`;
         } else {
-            // 视为网站，添加 https://
+            // 视为域名，添加 https://
             targetUrl = 'https://' + targetUrl;
         }
     }
     
-    // 2. 检查是否为已知或可嵌入资源 (这里假设大部分外部网站都不能嵌入)
-    // 强制使用新窗口打开所有外部网站，以绕过 X-Frame-Options/CSP 限制
+    // 2. 判断是否为外部链接
+    // 任何以 http/https 开头且不是 about:blank 的链接，我们都视作外部网站
     const isExternalWeb = targetUrl.startsWith('http') && targetUrl !== 'about:blank';
     
     if (isExternalWeb) {
-        // 在新窗口中打开外部链接
+        // 【关键修正】：使用新窗口打开外部链接，彻底绕过 iframe 嵌入限制
         window.open(targetUrl, '_blank');
         
-        // 保持 iframe 内容不变或设置回 about:blank
-        if (iframe.src === 'about:blank') {
-            iframe.src = targetUrl; // 尝试加载，但大概率会被拒绝，用于显示链接
-        } else {
-             // 如果不想让 iframe 显示错误，可以不做任何操作
+        // 保持 iframe 的状态，避免显示 "拒绝连接" 的错误界面
+        if (iframe && iframe.src !== 'about:blank') {
+             // 可选：将 iframe 内容重置或保持不动
+             iframe.src = 'about:blank';
         }
 
-        if (typeof sysLog === 'function') sysLog(`WEB: External link opened in new window: ${targetUrl.substring(0, 50)}...`, "DAT");
+        if (typeof sysLog === 'function') {
+            sysLog(`WEB: Link opened in new window: ${targetUrl.substring(0, 50)}...`, "DAT");
+        }
         
     } else {
-        // 3. 更新 iframe (例如加载 about:blank 或内部页面)
-        iframe.src = targetUrl;
-        if (typeof sysLog === 'function') sysLog(`WEB: Loading local content or about:blank.`, "DAT");
+        // 3. 处理内部或本地链接 (如 about:blank)
+        if (iframe) {
+             iframe.src = targetUrl;
+        }
+        if (typeof sysLog === 'function') {
+            sysLog(`WEB: Loading internal content: ${targetUrl}`, "DAT");
+        }
     }
 
     // 4. 更新地址栏显示

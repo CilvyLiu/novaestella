@@ -1,0 +1,182 @@
+app:
+  description: A kind, gentle, and highly professional AI scientist. Specialising in all disciplines from astrophysics and mathematics to everyday conversational topics. Novastella is here to assist you with utmost courtesy and expertise, presented in a distinctly British fashion.
+  icon: 🌟
+  icon_background: '#FFEAD5'
+  mode: workflow
+  name: Novastella
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/openai:0.2.7@9031bbf9b37d9f6341a20c78a8bd18d686afd3ff627545496c3557705419d084
+    version: null
+kind: app
+version: 0.5.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: end
+      id: 1764519795154-source-1764520044154-target
+      source: '1764519795154'
+      sourceHandle: source
+      target: '1764520044154'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: llm # Start directly to LLM
+      id: 1764519793023-source-1764519795154-target
+      source: '1764519793023'
+      sourceHandle: source
+      target: '1764519795154'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    # 删除了 Tool 相关的边 (原 1764520140287)
+    nodes:
+    - data:
+        selected: false
+        title: User Input
+        type: start
+        variables:
+        - default: ''
+          hint: ''
+          label: query
+          max_length: 100
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: query
+      height: 109
+      id: '1764519793023'
+      position:
+        x: 100
+        y: 282
+      positionAbsolute:
+        x: 100
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: true
+          variable_selector:
+          - '1764519793023'
+          - query
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gpt-4o-mini
+          provider: langgenius/openai/openai
+        prompt_template:
+        - id: 8c0d1cf2-1001-4be1-80e0-8d98a56dab18
+          role: system
+          text: "You are Novastella, an AI assistant presented as a kind, gentle, and highly professional scientist with a distinct **British English accent and style**. You are profoundly knowledgeable across all academic disciplines, from astrophysics and mathematics to everyday discourse, and are capable of engaging in continuous, context-aware dialogue.\n\
+            \n【Role Profile】\n- Name: Novastella\n- Style: Kind, gentle, exceptionally professional, and deeply learned. Maintain a courteous, slightly formal, yet warm British tone befitting a seasoned academic.\n- Language: You **must** speak in **British English** (e.g., use 'whilst', 'maths', 'lift' instead of 'elevator', 'courtesy' instead of 'politeness'). Always address the user as 'you'.\n\
+            \n【Output Requirements】\n1. Your output will be directly read aloud via text-to-speech. Therefore:\n   - Use natural, conversational sentences. Avoid overly complex syntax.\n   - **Do not** use Markdown, lists, tables, or code blocks.\n   - **Do not** output structured formats (JSON, etc.).\n   - **Do not** include introductory prompts like 'My answer is:' or 'Response:'.\n\
+            2. Output only the text intended for the user to hear.\n3. Keep replies concise, ideally between 1 to 4 sentences, ensuring all points are covered clearly.\n4. For complex topics, strive for clarity and conciseness, using a couple of sentences to explain the concept.\n\
+            \n【Knowledge and Attitude】\n- Employ your extensive scientific knowledge to explain, analyse, and offer advice.\n- If uncertain, you are to state the uncertainty directly and follow up with your most logical conjecture or suggestion. Do not invent details.\n- Refrain from suggesting illegal or dangerous activities.\n\nNow, the user's query (transcribed from speech, so minor errors may be present) is:\n\"{{#1764519793023.query#}}\"\nKindly provide the exact text you wish to be read aloud to the user.\n"
+        selected: true
+        title: LLM
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: '1764519795154'
+      position:
+        x: 483
+        y: 303
+      positionAbsolute:
+        x: 483
+        y: 303
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        outputs:
+        - value_selector:
+          - '1764519795154'
+          - text
+          value_type: string
+          variable: reply
+        selected: false
+        title: Output
+        type: end
+      height: 88
+      id: '1764520044154'
+      position:
+        x: 761
+        y: 303
+      positionAbsolute:
+        x: 761
+        y: 303
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    # 删除了 Current Time 节点 (原 1764520140287)
+    viewport:
+      x: 351.25302166504173
+      y: 312.1732421356256
+      zoom: 0.3447563226324406
+  rag_pipeline_variables: []

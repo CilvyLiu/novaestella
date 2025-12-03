@@ -1,0 +1,2612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STARSHIP HMI - FLIGHT CONTROL & WORKSTATION (V12 - Novastella)</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+    
+    
+        /* --- STARSHIP AESTHETICS (BLUE/CYAN/ORANGE THEME) --- */
+        :root {
+            --star-blue: #00e0ff; /* 主青蓝色调 */
+            --star-glow: #88ffff; /* 亮青色光晕 */
+            --star-orange: #ffaa00; /* 新增：强调橙色/琥珀色 */
+            --star-orange-glow: #ffc466; /* 新增：亮橙色光晕 */
+            --alert-red: #ff3300; /* 警报深红色 */
+            --glass-bg: rgba(0, 15, 20, 0.7); /* 深蓝色玻璃背景 */
+            --font-main: 'Roboto Mono', monospace; /* 主字体 */
+        }
+/* --- 浏览器浮窗触发器 (#browser-trigger-area) 样式 --- */
+#browser-trigger-area {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1000; /* 确保它能被点击 */
+    pointer-events: auto;
+}
+
+/* --- 浏览器浮窗容器 (#browser-widget) 样式 --- */
+#browser-widget {
+    /* 核心定位和层级 */
+    position: absolute; 
+    z-index: 9990; 
+    transform: translate(-50%, -50%); /* 保持居中定位（拖动时被JS覆盖） */
+    
+    /* 核心布局：垂直方向排列 */
+    display: flex;
+    flex-direction: column;
+
+    /* 默认大小和外观 */
+    width: 800px;
+    height: 500px;
+    background: rgba(10, 20, 30, 0.95);
+    border: 2px solid var(--star-glow);
+    box-shadow: 0 0 15px var(--star-glow);
+
+    /* ------------------------------------------------ */
+    /* 关键修复：允许用户手动缩放浮窗 */
+    resize: both; /* 允许水平和垂直缩放 */
+    overflow: auto; /* 确保拖动区域和内容在缩放时能正确处理溢出 */
+    min-width: 400px; /* 最小宽度限制 */
+    min-height: 500px; /* 最小高度限制，防止缩放太小 */
+    /* ------------------------------------------------ */
+}
+
+/* --- 地址栏容器 (#web-controls-bar) 样式 --- */
+#web-controls-bar {
+    padding: 5px 10px; 
+    background: rgba(0, 0, 0, 0.4);
+    border-bottom: 1px solid var(--star-blue);
+    flex-shrink: 0; /* 确保它不会被压缩 */
+}
+
+/* --- 地址栏输入框 (#web-address-bar) 样式 --- */
+#web-address-bar {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 8px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--star-blue);
+    color: var(--star-glow);
+    font-size: 14px;
+    outline: none;
+}
+
+/* --- Iframe 样式 (占据剩余空间) --- */
+#embedded-iframe {
+    width: 100%;
+    border: none;
+    flex-grow: 1; /* 占据 #browser-widget 容器内所有剩余的垂直空间 */
+    min-height: 100px;
+    background: #000;
+}
+        /* --- 全局滚动条美化 (HMI Aesthetic) --- */
+        ::-webkit-scrollbar {
+            width: 8px; /* 滚动条的宽度 (垂直) */
+            height: 8px; /* 滚动条的高度 (水平) */
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 20, 40, 0.4); /* 深蓝色半透明背景 */
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: var(--star-blue); /* 滑块颜色：青蓝 */
+            border-radius: 4px;
+            border: 1px solid var(--star-glow);
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: var(--star-orange); /* 悬停时变橙色 */
+            border-color: var(--star-orange-glow);
+            cursor: pointer;
+        }
+        ::-webkit-scrollbar-corner {
+            background: transparent;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            background-color: #000;
+            color: var(--star-blue);
+            font-family: var(--font-main);
+            overflow: hidden;
+            height: 100vh; width: 100vw;
+            user-select: none;
+            cursor: none;
+        }
+
+        /* --- FONT FIXES --- */
+        #hex-dump, #log-feed, .music-player-link-input, .reminder-input-field {
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+
+        /* --- LAYERS --- */
+        #cam-feed {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; transform: scaleX(-1);
+            z-index: 1; opacity: 1;
+            filter: contrast(0.95) brightness(0.7) saturate(1.15) hue-rotate(10deg) blur(0.5px);	
+        }
+
+        #hand-canvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 999; transform: scaleX(-1); pointer-events: none;
+        }
+
+        #vignette {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(circle at center, transparent 30%, #000 120%);
+            z-index: 2; pointer-events: none;
+            box-shadow: inset 0 0 100px rgba(0,0,0,0.9);
+        }
+        
+        /* Boot Screen */
+        #boot-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #000; z-index: 1000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: opacity 1s;
+        }
+        .boot-btn {
+            padding: 15px 30px; font-size: 20px;
+            background: var(--star-blue); color: #000;
+            border: none; cursor: pointer;
+            box-shadow: 0 0 20px var(--star-glow);
+            font-family: var(--font-main);
+            letter-spacing: 2px;
+        }
+        .boot-btn:hover { background: var(--star-glow); }
+
+        /* --- UI CONTAINER --- */
+        #ui-layer {
+            position: relative; z-index: 10; width: 100%; height: 100%;
+            pointer-events: none;
+            perspective: 1000px;
+        }
+
+        /* --- WIDGETS --- */
+        .top-bar {
+            position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 40px; align-items: center;
+        }
+        .hud-tag {
+            font-size: 15px; letter-spacing: 2px; color: var(--star-glow);
+            border-bottom: 1px solid var(--star-blue); padding-bottom: 2px;
+            text-shadow: 0 0 10px var(--star-blue);
+        }
+
+        .left-panel {
+            position: absolute; left: 50px; top: 15%;
+            transform: rotateY(5deg);	
+            display: flex; flex-direction: column; gap: 20px;
+            width: 250px;
+            pointer-events: none;	
+        }
+        .stat-group { display: flex; flex-direction: column; gap: 8px; }
+        .bar-frame { width: 100%; height: 6px; background: rgba(0, 100, 255, 0.2); }
+        .bar-fill { height: 100%; background: var(--star-blue); width: 0%; transition: width 0.5s; box-shadow: 0 0 10px var(--star-blue); }
+        .bar-fill.active { width: 95%; animation: pulseBar 2s infinite; }
+        .label-text { font-size: 11px; color: var(--star-blue); letter-spacing: 2px; font-weight: bold; }
+        .box-container {	
+            border: 1px solid var(--star-blue);	
+            padding: 15px;
+            background: var(--glass-bg);	
+            box-shadow: inset 0 0 5px rgba(0, 224, 255, 0.2);
+            pointer-events: auto;	
+        }
+        .weather-val { font-size: 20px; color: #fff; font-weight: bold; text-shadow: 0 0 10px var(--star-glow); }
+        .weather-sub { font-size: 12px; color: var(--star-blue); opacity: 0.8; }
+        #hex-dump {
+            font-size: 11px;
+            color: rgba(0, 224, 255, 0.7); line-height: 1.4;	
+            margin-top: 5px; height: 40px; overflow: hidden;
+        }
+
+        /* Right Radar (MAP) */
+        .right-panel {
+            position: absolute; right: 50px; top: 15%;
+            width: 450px; height: 450px;
+            transform: rotateY(-5deg);
+            transition: all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            pointer-events: auto;
+        }
+        .right-panel.fullscreen {
+            top: 0; right: 0; bottom: 0; left: 0;
+            width: 100vw; height: 100vh;
+            transform: none;	
+            background: rgba(0,0,0,0.9);
+            z-index: 90;
+        }
+        #radar-housing {
+            width: 100%; height: 100%;
+            border-radius: 8px;
+            border: 2px solid var(--star-blue);
+            position: relative; overflow: hidden;
+            background: rgba(0, 15, 20, 0.9);
+            box-shadow: 0 0 30px rgba(0, 224, 255, 0.3);
+            transition: border-radius 0.5s;
+        }
+        .right-panel.fullscreen #radar-housing { border-radius: 0; border: none; }
+        #map-layer { width: 100%; height: 100%; opacity: 0; transition: opacity 1s; }
+        #map-layer.active { opacity: 1; }
+        #map { width: 100%; height: 100%; background: #000; }
+        .leaflet-layer {
+            filter: grayscale(100%) sepia(50%) hue-rotate(180deg) saturate(300%) contrast(1.2) brightness(0.8);
+            opacity: 0.95;	
+            transition: filter 1.5s ease;
+        }
+        .leaflet-layer.true-color { filter: none !important; opacity: 1; }
+        #radar-sweep {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: conic-gradient(from 0deg, transparent 70%, rgba(0, 224, 255, 0.1) 90%, rgba(136, 255, 255, 0.6) 100%);
+            border-radius: 50%; animation: spin 4s linear infinite;
+            pointer-events: none; mix-blend-mode: screen; z-index: 10;
+        }
+
+        /* Exit Fullscreen Button */
+        #exit-fullscreen-btn {
+            position: absolute; top: 15px; right: 15px;
+            background: var(--alert-red); color: #000;
+            border: none; padding: 5px 10px;
+            font-size: 14px; cursor: pointer;
+            z-index: 95;	
+            display: none;
+            box-shadow: 0 0 10px var(--alert-red);
+            pointer-events: auto;
+            font-family: var(--font-main);
+        }
+        .right-panel.fullscreen #exit-fullscreen-btn {
+            display: block;	
+        }
+
+
+        /* Bottom Console */
+        .bottom-console {
+            position: absolute; bottom: 40px; left: 50px;
+            width: 400px;
+            transform: rotateX(5deg);
+            pointer-events: none;	
+        }
+        #log-feed {
+            font-size: 13px;
+            color: rgba(0, 224, 255, 0.6); height: 120px;	
+            overflow: hidden; display: flex; flex-direction: column-reverse;
+            text-shadow: 0 0 2px var(--star-blue);
+        }
+        .msg-sys { color: var(--star-glow); }	
+        .msg-usr { color: var(--star-orange); } /* 已修改: 用户输入改为橙色 */
+        .msg-novastella { color: var(--star-blue); font-weight: bold; }	
+        .msg-alert { color: var(--alert-red); font-weight: bold; }	
+
+        /* --- TOOL BAR & WIDGETS --- */
+        #tool-bar {
+            position: absolute; bottom: 40px; right: 50px;
+            width: 450px;
+            display: flex; gap: 10px;
+            justify-content: space-around;
+            background: var(--glass-bg);
+            border: 1px solid var(--star-blue);
+            padding: 10px;
+            box-shadow: 0 0 15px rgba(0, 224, 255, 0.2);
+            pointer-events: auto;	
+            z-index: 50;	
+        }
+        .tool-btn {
+            color: var(--star-blue); font-size: 28px; padding: 5px 10px;
+            cursor: pointer; transition: all 0.2s;
+            border: 1px solid transparent;
+            width: 20%; text-align: center;
+        }
+        .tool-btn:hover { color: var(--star-glow); box-shadow: 0 0 10px var(--star-blue); }
+        .tool-btn.active { 
+            color: #000; 
+            background: var(--star-orange); /* 已修改: 激活按钮改为橙色 */
+            border-color: var(--star-orange-glow); 
+            box-shadow: 0 0 10px var(--star-orange-glow);
+        }
+        
+        .tool-btn[data-tool="map"].active .fa-expand-alt { display: none; }
+        .tool-btn[data-tool="map"].active .fa-compress-alt { display: inline; }
+        .tool-btn[data-tool="map"] .fa-compress-alt { display: none; }
+
+
+        /* Floating Widget Styling */
+        .work-widget {
+            position: absolute;
+            top: 50%; left: 50%;	
+            transform: translate(-50%, -50%);	
+            width: 300px; max-height: 400px;
+            z-index: 100;	
+            background: var(--glass-bg);
+            border: 2px solid var(--star-blue);
+            padding: 20px;
+            box-shadow: 0 0 30px rgba(0, 224, 255, 0.5);
+            display: none; /* Initially hidden */
+            flex-direction: column;
+            pointer-events: auto;	
+            /* Added for float styling */
+            min-width: 300px;
+            min-height: 200px;
+            resize: both; /* Allow resizing */
+            overflow: auto;
+        }
+        .widget-header {
+            font-size: 14px; letter-spacing: 2px; text-transform: uppercase;
+            border-bottom: 1px solid var(--star-blue); padding-bottom: 10px;
+            margin-bottom: 10px;
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: move; /* Make header draggable */
+        }
+        .widget-close { color: var(--alert-red); cursor: pointer; font-size: 18px; transition: color 0.2s; }
+        .widget-close:hover { color: #fff; }
+
+        /* CALENDAR FIX (Existing) */
+        #calendar-body {
+            display: grid;	
+            grid-template-columns: repeat(7, 1fr);	
+            text-align: center;	
+            font-size: 12px;
+            gap: 1px;	
+        }
+        .day-header { color: var(--star-glow); padding: 5px 0; margin-bottom: 5px; font-size: 10px;}
+        .cal-day {	
+            padding: 5px 0;	
+            border: 1px solid rgba(0, 224, 255, 0.1);	
+            cursor: default;	
+            background: rgba(0,0,0,0.1);	
+        }
+        .cal-day:empty { background: transparent; border: none; }
+        .cal-day.today { background: var(--star-blue); color: #000; font-weight: bold; }
+        .cal-day.event { background: rgba(255, 255, 0, 0.2); }
+
+        /* Reminder Styling (Existing) */
+        #reminder-list-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            border: 1px solid rgba(0, 224, 255, 0.1);
+            padding: 5px;
+            margin-bottom: 10px;
+        }
+        #reminder-list {
+            list-style: none; padding: 0; margin: 0;	
+        }
+        .reminder-item {
+            padding: 8px; border-bottom: 1px dashed rgba(0, 224, 255, 0.3);
+            font-size: 13px;
+            display: flex; justify-content: space-between; align-items: flex-start;
+            flex-direction: column;
+        }
+        .reminder-item:last-child { border-bottom: none; }
+        .no-reminders { padding: 10px; color: rgba(255, 255, 255, 0.5); font-style: italic; font-size: 12px; }
+        
+        .reminder-title { font-weight: bold; }
+        .reminder-schedule { font-size: 10px; color: var(--star-glow); opacity: 0.8; margin-top: 2px; }
+
+        .add-reminder-btn {
+            background: var(--star-blue); color: #000; padding: 8px; border: none; cursor: pointer;
+            width: 100%; font-family: var(--font-main);
+        }
+        .add-reminder-btn:hover { background: var(--star-glow); }
+
+        /* Input fields for reminder (Existing) */
+        .reminder-input-field {
+            width: calc(100% - 20px); padding: 5px 10px; margin-bottom: 5px;
+            background: rgba(0, 224, 255, 0.1); border: 1px solid var(--star-blue);
+            color: var(--star-glow); font-size: 10px;
+        }
+        
+        /* --- Music Player Styling (Enhanced) --- */
+        #music-widget { width: 450px; max-height: 500px; }
+        #music-player { text-align: center; }
+        #track-name { font-size: 16px; color: #fff; margin: 10px 0 5px; }
+        #artist-name { font-size: 12px; color: var(--star-blue); opacity: 0.8; margin-bottom: 15px; }
+        
+        .music-controls { display: flex; justify-content: center; gap: 20px; margin-bottom: 15px; }
+        .music-btn { font-size: 30px; cursor: pointer; color: var(--star-blue); transition: color 0.2s; }
+        .music-btn.play { color: var(--star-glow); }
+        .music-btn.active-mode { color: #fff; text-shadow: 0 0 10px var(--star-glow); }
+        .music-btn:hover { color: var(--star-glow); }
+
+        .seek-controls { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; }
+        .seek-btn { font-size: 20px; padding: 5px; }
+
+        /* Subtitles/Lyrics Area */
+        #subtitle-area {
+            height: 100px;
+            overflow-y: hidden; /* Hide scrollbar for clean look */
+            text-align: center;
+            border: 1px solid var(--star-blue);
+            padding: 10px;
+            font-size: 14px;
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+        #current-subtitle {
+            color: var(--star-glow);
+            font-weight: bold;
+            text-shadow: 0 0 5px var(--star-glow);
+            transition: opacity 0.3s;
+        }
+
+        /* Learning/Repeat Controls */
+        .learning-controls {
+            display: flex; justify-content: center; gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .learn-btn {
+            background: rgba(0, 224, 255, 0.1);
+            color: var(--star-blue);
+            border: 1px solid var(--star-blue);
+            padding: 5px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .learn-btn:hover { background: var(--star-blue); color: #000; }
+
+        /* Playlist */
+        #playlist-section {
+            display: flex; flex-direction: column;
+            border-top: 1px dashed var(--star-blue);
+            padding-top: 10px;
+            margin-top: 10px;
+        }
+        #playlist-list {
+            list-style: none;
+            padding: 0; margin: 5px 0 10px;
+            max-height: 150px; /* Increased height for folders */
+            overflow-y: auto;
+            font-size: 11px;
+            border: 1px solid rgba(0, 224, 255, 0.1);
+        }
+        
+        /* --- Playlist Hierarchy Styling (NEW) --- */
+        .playlist-group-header {
+            padding: 0;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(0, 224, 255, 0.3);
+            margin: 2px 0;
+            list-style: none;	
+        }
+        .playlist-group-header:hover {
+            background: rgba(0, 224, 255, 0.1);
+        }
+        
+        .playlist-item {
+            padding: 5px 8px;
+            cursor: pointer;
+            border-bottom: 1px dashed rgba(0, 224, 255, 0.1);
+            text-align: left;
+            display: flex;	
+            justify-content: space-between;
+            align-items: center;
+            padding-left: 25px; /* Indent the tracks */
+            font-size: 10px; /* Make track text smaller */
+        }
+        .playlist-item:hover { background: rgba(0, 224, 255, 0.15); }
+        .playlist-item.current {
+            background: var(--star-blue);
+            color: #000;
+            font-weight: bold;
+        }
+        .playlist-item.current span {
+            color: #000 !important;
+        }
+        
+        /* Hidden file input */
+        #folder-input { display: none; }
+
+        .delete-track-btn {
+            color: var(--alert-red);
+            font-size: 14px;
+            cursor: pointer;
+            padding: 0 5px;
+            transition: color 0.2s;
+        }
+        .delete-track-btn:hover {
+            color: #fff;
+            text-shadow: 0 0 5px var(--alert-red);
+        }
+      /* --- 浏览器浮窗样式 (基于 HMI 风格) --- */
+
+/* 触发图标区域 */
+#browser-trigger-area {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 200; /* 确保在最上层 */
+    pointer-events: auto; /* 允许点击 */
+}
+#browser-logo {
+    width: 48px; 
+    height: 48px;
+    cursor: pointer;
+    border: 2px solid var(--star-blue);
+    border-radius: 5px;
+    transition: all 0.2s;
+}
+#browser-logo:hover {
+    box-shadow: 0 0 10px var(--star-glow);
+}
+
+/* 浏览器浮窗 */
+#browser-widget {
+    /* 继承 .work-widget 样式，但设置 Flex 布局 */
+    display: flex;
+    flex-direction: column;
+}
+
+/* 地址栏容器 */
+#web-controls-bar {
+    display: flex;
+    padding: 0 0 10px 0;
+}
+
+/* 地址栏输入框本体 */
+#web-address-bar {
+    flex-grow: 1;
+    height: 30px;
+    padding: 0 10px;
+    font-family: var(--font-main);
+    font-size: 14px;
+    
+    /* HMI 风格 */
+    background: rgba(0, 0, 0, 0.7);
+    color: var(--star-glow);
+    border: 1px solid var(--star-blue);
+    box-shadow: 0 0 5px rgba(0, 224, 255, 0.3);
+    transition: all 0.2s;
+}
+
+#web-address-bar:focus {
+    outline: none;
+    border-color: var(--star-glow);
+    box-shadow: 0 0 8px var(--star-glow);
+}
+
+/* 嵌入式网页 iframe */
+#embedded-iframe {
+    width: 100%;
+    flex-grow: 1; /* 占据剩余空间 */
+    border: 1px solid var(--star-blue); /* 网页内容边框 */
+    background-color: #fff; /* 默认白色背景，加载时可见 */
+}
+/*到此结束浏览器*/
+        /* --- CURSOR (Existing) --- */
+        #hand-cursor {
+            position: absolute; width: 30px; height: 30px;
+            border: 2px solid var(--star-glow); border-radius: 50%;
+            transform: translate(-50%, -50%); pointer-events: none; z-index: 2001;
+            display: none; box-shadow: 0 0 20px var(--star-glow);
+            transition: width 0.1s, height 0.1s, border-color 0.1s;
+        }
+        #hand-cursor.drag { border-color: var(--alert-red); width: 15px; height: 15px; background: rgba(255, 50, 0, 0.3); }
+        #hand-cursor.zoom { border-color: #fff; width: 60px; height: 60px; border-style: dashed; }
+        
+        @keyframes spin { 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+        @keyframes pulseBar { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; box-shadow: 0 0 15px var(--star-glow); } }
+    </style>
+</head>
+<body>
+
+<video id="cam-feed" playsinline autoplay muted></video>
+<canvas id="hand-canvas"></canvas>
+<div id="vignette"></div>
+<div id="hand-cursor"></div>
+
+<div id="boot-screen">
+            <button class="boot-btn" id="start-btn" onclick="systemBoot()">INITIATE STARSHIP HMI</button>
+    <div id="boot-log" style="margin-top:20px; font-size:15px; color:var(--star-blue); display:none; text-align:center;">
+        LOADING CORE...
+    </div>
+</div>
+<div id="browser-trigger-area">
+    <img id="browser-logo" src="logobrowser.png" alt="Browser" title="Open Embedded Browser" />
+</div>
+<div id="ui-layer">
+    <div class="top-bar">
+        <div class="hud-tag">FLIGHT CONTROL</div>
+        <div class="hud-tag" id="sys-clock">00:00:00</div>
+        <div class="hud-tag">VOICE: <span id="voice-status" style="color:var(--alert-red)">OFFLINE</span></div>
+    </div>
+
+    <div class="left-panel">
+        <div class="stat-group">
+            <div class="label-text">POWER CORE STATUS</div>
+            <div class="bar-frame"><div class="bar-fill active" style="width:95%"></div></div>
+        </div>
+        
+        <div class="box-container">
+            <div class="label-text">HAND TRACKING</div>
+            <div id="hand-log" style="font-size:15px; color:#fff; margin-top:5px;">INITIALIZING...</div>
+        </div>
+
+        <div class="box-container">
+            <div class="label-text" style="display:flex; justify-content:space-between;">
+                <span>SYSTEM DIAGNOSTICS</span>
+                <span style="color:var(--star-glow)">ONLINE</span>
+            </div>
+            <div style="margin-top:5px; display:flex; gap:5px; align-items:center;">
+                <span style="font-size:11px; color:var(--star-blue)">CPU</span>
+                <div class="bar-frame" style="width:60px;"><div id="cpu-bar" class="bar-fill" style="width:40%; box-shadow:none;"></div></div>
+                <span style="font-size:11px; color:var(--star-blue)">NET</span>
+                <div class="bar-frame" style="width:60px;"><div id="net-bar" class="bar-fill" style="width:80%; box-shadow:none;"></div></div>
+            </div>
+            <div id="hex-dump"></div>
+        </div>
+
+        <div class="box-container" style="min-height: 80px;">
+            <div class="label-text">EXTERNAL SENSORS</div>
+            <div id="weather-box" style="margin-top:5px; opacity: 0.5;">
+                <div id="weather-display" class="weather-val">--°</div>
+                <div id="weather-desc" class="weather-sub">STANDBY</div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <div class="right-panel" id="radar-panel">
+        <div id="radar-housing">
+            <button id="exit-fullscreen-btn" onclick="toggleFullscreen(false)">EXIT</button>
+            <div id="radar-sweep"></div>
+            <div id="map-layer">
+                <div id="map"></div>
+            </div>
+            <div style="position:absolute; bottom:20px; left:0; width:100%; text-align:center; font-size:14px; letter-spacing:3px; text-shadow:0 0 5px var(--star-blue); pointer-events: none; color: var(--star-blue);">
+                GEOSPATIAL FEED
+            </div>
+        </div>
+    </div>
+    <!--我的浏览器-->
+    <div id="browser-widget" class="work-widget" display: none;">
+    
+    <div class="widget-header" id="browser-drag-handle">
+        <span><i class="fas fa-globe"></i> NOVELLA WEB INTERFACE</span>
+        <i class="fas fa-times widget-close" onclick="toggleBrowser(false)"></i>
+    </div>
+    
+    <div id="web-controls-bar">
+        <input type="text" id="web-address-bar" placeholder="Enter URL (e.g., wikipedia.org)..." />
+    </div> 
+    
+   <iframe 
+    id="embedded-iframe" 
+    src="about:blank"
+    
+    /* 关键修正：如果存在 sandbox 属性，请确保它包含以下权限 */
+    sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation"
+    
+></iframe>
+    
+</div>
+  <!--我的浏览器-->
+    <div id="calendar-widget" class="work-widget">
+        <div class="widget-header">
+            <span>FLIGHT CALENDAR - DEC 2025</span>
+            <i class="fas fa-times widget-close" onclick="toggleWidget('calendar')"></i>
+        </div>
+        <div id="calendar-body">
+            <div class="day-header">SUN</div><div class="day-header">MON</div><div class="day-header">TUE</div>
+            <div class="day-header">WED</div><div class="day-header">THU</div><div class="day-header">FRI</div>
+            <div class="day-header">SAT</div>
+            </div>
+    </div>
+
+     <div id="reminder-widget" class="work-widget" style="width: 350px; left: 70%; top: 30%;">
+        <div class="widget-header">
+            <span>MISSION REMINDERS</span>
+            <i class="fas fa-times widget-close" onclick="toggleWidget('reminder')"></i>
+        </div>
+        <div id="reminder-list-container">
+            <ul id="reminder-list">
+                <li class="no-reminders">No scheduled reminders.</li>
+            </ul>
+        </div>
+        <div id="manual-reminder-input" style="display: none; margin-top: 10px;">
+            <input type="text" id="new-reminder-title" placeholder="Reminder Title..." class="reminder-input-field">
+            <input type="text" id="new-reminder-time" placeholder="Time (e.g., 10:30, tomorrow 8 pm)..." class="reminder-input-field">
+            <button class="add-reminder-btn" onclick="manualAddReminder()">ADD MANUALLY</button>
+        </div>
+        <button id="toggle-manual-btn" class="add-reminder-btn" onclick="toggleManualReminderInput(true)">ADD NEW TIMED REMINDER</button>
+    </div>
+
+
+
+ <div id="music-widget" class="work-widget" style="width: 450px; left: 50%; top: 50%;">
+        <div class="widget-header">
+            <span>ATMOS MUSIC PLAYER</span>
+            <i class="fas fa-times widget-close" onclick="toggleWidget('music')"></i>
+        </div>
+        
+        <div id="music-player">
+            <div id="track-name">Pulsar Rendezvous</div>
+            <div id="artist-name">Cygnus X-1</div>
+            
+            <audio id="audio-player" preload="auto" src=""></audio>
+            
+            <div class="seek-controls">
+                <i class="fas fa-history seek-btn music-btn" onclick="seekMusic(-10)" title="后退 10 秒"></i>
+                <i class="fas fa-forward seek-btn music-btn" onclick="seekMusic(10)" title="前进 10 秒"></i>
+            </div>
+
+            <div class="music-controls">
+                <i class="fas fa-random music-btn" id="shuffle-btn" onclick="setPlayMode('shuffle')" title="随机播放"></i>
+                <i class="fas fa-step-backward music-btn" onclick="skipTrack('prev')" title="上一曲"></i>
+                <i id="play-btn" class="fas fa-play music-btn" onclick="toggleMusic()" title="播放/暂停"></i> 
+                <i class="fas fa-step-forward music-btn" onclick="skipTrack('next')" title="下一曲"></i>
+                <i class="fas fa-redo-alt music-btn" id="repeat-btn" onclick="setPlayMode('repeat')" title="列表循环/单曲循环"></i>
+            </div>
+            
+            <div id="subtitle-area">
+                <div id="current-subtitle">[Waiting for track data...]</div>
+            </div>
+            
+            <div class="learning-controls">
+                <button class="learn-btn" onclick="speakCurrentSentence()" title="复读当前句子">单句重读</button>
+                <button class="learn-btn" onclick="speakWordByWord()" title="逐词复读">单词重读</button>
+                <button class="learn-btn" onclick="stopSpeech()" title="停止语音复读/重播">停止/重播</button>
+            </div>
+
+
+            <div id="playlist-section">
+                <div class="label-text">PLAYLIST: <span id="playlist-count">1</span> TRACKS</div>
+                <ul id="playlist-list">
+                    <li class="no-reminders">Use the buttons below to add tracks.</li>
+                </ul>
+                <input type="file" id="folder-input" accept="audio/*" multiple webkitdirectory directory>
+                <button class="add-reminder-btn" onclick="document.getElementById('folder-input').click()">导入文件/文件夹</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="bottom-console">
+        <div class="label-text" style="border-bottom:1px solid var(--star-blue); margin-bottom:5px;">SYSTEM LOG (Nova Log)</div>
+        <div id="log-feed">
+            <div>[SYS] READY.</div>
+        </div>
+    </div>
+
+    <div id="tool-bar">
+        <div class="tool-btn" data-tool="calendar" onclick="toggleWidget('calendar')"><i class="fas fa-calendar-alt"></i><br><span style="font-size:8px;">CALENDAR</span></div>
+        <div class="tool-btn" data-tool="reminder" onclick="toggleWidget('reminder')"><i class="fas fa-bell"></i><br><span style="font-size:8px;">REMINDER</span></div>
+        <div class="tool-btn" data-tool="music" onclick="toggleWidget('music')"><i class="fas fa-music"></i><br><span style="font-size:8px;">MUSIC</span></div>
+        <div class="tool-btn" data-tool="map" id="map-tool-btn" onclick="toggleFullscreen()"><i class="fas fa-expand-alt"></i><i class="fas fa-compress-alt"></i><br><span style="font-size:8px;">RADAR</span></div>
+    </div>
+
+</div>
+
+
+    <div class="bottom-console">
+        <div class="label-text" style="border-bottom:1px solid var(--star-blue); margin-bottom:5px;">SYSTEM LOG</div>
+        <div id="log-feed">
+            <div>[SYS] READY.</div>
+        </div>
+    </div>
+
+    <div id="tool-bar">
+        <div class="tool-btn" data-tool="calendar" onclick="toggleWidget('calendar')"><i class="fas fa-calendar-alt"></i><br><span style="font-size:8px;">CALENDAR</span></div>
+        <div class="tool-btn" data-tool="reminder" onclick="toggleWidget('reminder')"><i class="fas fa-bell"></i><br><span style="font-size:8px;">REMINDER</span></div>
+        <div class="tool-btn" data-tool="music" onclick="toggleWidget('music')"><i class="fas fa-music"></i><br><span style="font-size:8px;">MUSIC</span></div>
+        <div class="tool-btn" data-tool="map" id="map-tool-btn" onclick="toggleFullscreen()"><i class="fas fa-expand-alt"></i><i class="fas fa-compress-alt"></i><br><span style="font-size:8px;">RADAR</span></div>
+    </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script>
+    // --- CONFIG ---
+ const STATE = {
+        booted: false,
+        fullscreen: false,
+        speaking: false,
+        map: null,
+        detailedMode: false,
+        zoomLock: 0,
+        defaultLoc: [39.9042, 116.4074],
+        recognition: null,
+        activeWidget: null, // 当前活动的小部件
+        // --- 音乐播放器核心 STATE 修正与集成 ---
+        musicPlaying: false, // 音乐播放状态
+        // 修正：在 mainAppInit 中设置 audioPlayer，现在初始化为 null
+        audioPlayer: null, 
+        playlists: [
+            // 关键新增：存储所有曲目的核心数组
+            { id: 0, name: "Default System Tracks", tracks: [] } 
+        ], 
+        trackIdCounter: 1, // 关键新增：确保 ID 计数器存在
+        currentTrack: null, // 当前播放的曲目对象
+        playMode: 'list', // 播放模式 ('list', 'shuffle', 'repeat')
+        expandedPlaylists: new Set([0]), // 记录哪个播放列表是展开的
+        // ----------------------------------------
+        
+      reminders: [], 
+    reminderIdCounter: 1, // <--- 关键新增：确保计数器在启动时可用
+    DEFAULT_MUSIC_LINK: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+};
+ 
+
+    // === Dify 工作流配置（请替换成你自己的 Key） ===
+    const DIFY_CONFIG = {
+        endpoint: "https://api.dify.ai/v1/workflows/run",
+        // 注意：这里仍然使用你提供的 Key 作为示例，请在实际使用时确保其有效性
+        apiKey: "app-lYOYMvRg12X0Ut78gOWDFvhi",
+        inputKey: "query",
+        outputKey: "reply"
+    };
+
+    const CITIES = {
+        "shanghai": [31.2304, 121.4737], "beijing": [39.9042, 116.4074], "tokyo": [35.6762, 139.6503],
+        "new york": [40.7128, -74.0060], "london": [51.5074, -0.1278], "paris": [48.8566, 2.3522],
+        "starbase": [29.8781, 121.5492] // Added Starbase, TX
+    };
+
+    const WMO_CODES = {
+        0: "Clear Sky", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
+        45: "Fog", 48: "Depositing Rime Fog", 51: "Light Drizzle", 53: "Moderate Drizzle", 55: "Dense Drizzle",
+        61: "Slight Rain", 63: "Moderate Rain", 65: "Heavy Rain", 71: "Slight Snow", 73: "Moderate Snow",
+        75: "Heavy Snow", 95: "Thunderstorm", 96: "Thunderstorm with Hail", 99: "Heavy Hailstorm"
+    };
+// 全局变量：必须在函数外部定义！
+   let isBrowserDragging = false;
+        let dragElement = null;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let lastBrowserToggleTime = 0;
+        const TOGGLE_DEBOUNCE_MS = 700;
+
+    // --- 浏览器控制函数 ---
+    /**
+     * 切换浏览器浮窗的显示状态。
+     * @param {boolean} show - 强制显示 (true) 或关闭 (false)。
+     */
+    function toggleBrowser(show) {
+        const browserWidget = document.getElementById('browser-widget');
+        const browserLogo = document.getElementById('browser-logo');
+        // 检查当前状态来决定是打开还是关闭
+        const shouldOpen = (typeof show === 'boolean') ? show : (browserWidget.style.display === 'none' || !browserWidget.style.display);
+        
+        if (shouldOpen) {
+            browserWidget.style.display = 'flex';
+            // 如果 iframe 是空的，加载默认 URL
+            const iframe = document.getElementById('embedded-iframe');
+            if (iframe.src === 'about:blank' || !iframe.src) {
+                 loadURL('https://en.wikipedia.org/'); 
+            } 
+            browserLogo.classList.add('active'); 
+            if (typeof sysLog === 'function') sysLog("WEB INTERFACE ONLINE", "SYS");
+        } else {
+            browserWidget.style.display = 'none';
+            browserLogo.classList.remove('active'); 
+            if (typeof sysLog === 'function') sysLog("WEB INTERFACE OFFLINE", "SYS");
+        }
+    }
+
+    /**
+ /**
+ * 加载新的 URL 到 iframe 中，但对于外部主要网站，则在新窗口中打开。
+ * @param {string} url - 用户输入的 URL。
+ */
+function loadURL(url) {
+    let targetUrl = url.trim();
+    const iframe = document.getElementById('embedded-iframe');
+    const addressBar = document.getElementById('web-address-bar');
+
+    // 假设您只允许在 iframe 中加载非常有限的内部或本地资源。
+    // 对于大多数外部网站，我们使用新窗口打开。
+    
+    // 1. 尝试修正 URL 协议（如果用户只输入了域名）
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && targetUrl !== 'about:blank') {
+        // 如果输入包含空格或不是一个明显的域名，我们将其视为搜索
+        if (targetUrl.includes(' ') || !targetUrl.includes('.')) {
+             // 转换为 DuckDuckGo 搜索
+             targetUrl = `https://duckduckgo.com/?q=${encodeURIComponent(targetUrl)}`;
+        } else {
+            // 视为网站，添加 https://
+            targetUrl = 'https://' + targetUrl;
+        }
+    }
+    
+    // 2. 检查是否为已知或可嵌入资源 (这里假设大部分外部网站都不能嵌入)
+    // 强制使用新窗口打开所有外部网站，以绕过 X-Frame-Options/CSP 限制
+    const isExternalWeb = targetUrl.startsWith('http') && targetUrl !== 'about:blank';
+    
+    if (isExternalWeb) {
+        // 在新窗口中打开外部链接
+        window.open(targetUrl, '_blank');
+        
+        // 保持 iframe 内容不变或设置回 about:blank
+        if (iframe.src === 'about:blank') {
+            iframe.src = targetUrl; // 尝试加载，但大概率会被拒绝，用于显示链接
+        } else {
+             // 如果不想让 iframe 显示错误，可以不做任何操作
+        }
+
+        if (typeof sysLog === 'function') sysLog(`WEB: External link opened in new window: ${targetUrl.substring(0, 50)}...`, "DAT");
+        
+    } else {
+        // 3. 更新 iframe (例如加载 about:blank 或内部页面)
+        iframe.src = targetUrl;
+        if (typeof sysLog === 'function') sysLog(`WEB: Loading local content or about:blank.`, "DAT");
+    }
+
+    // 4. 更新地址栏显示
+    if (addressBar) {
+        addressBar.value = targetUrl;
+    }
+}
+    // --- WIDGET FUNCTIONS ---
+
+    function toggleWidget(widgetName, enable = null) {
+        const widgetElement = document.getElementById(widgetName + '-widget');
+        const toolbarButton = document.querySelector(`#tool-bar .tool-btn[data-tool="${widgetName}"]`);
+
+        if (!widgetElement) return;
+
+        let shouldOpen = (enable !== null) ? enable : (STATE.activeWidget !== widgetName);
+
+        // 1. Close ALL widgets and reset toolbar states
+        document.querySelectorAll('.work-widget').forEach(w => w.style.display = 'none');
+        document.querySelectorAll(`#tool-bar .tool-btn`).forEach(b => {
+             if (b.dataset.tool !== 'map') b.classList.remove('active');
+        });
+        STATE.activeWidget = null;
+
+        // 2. Open the requested widget
+        if (shouldOpen) {
+            widgetElement.style.display = 'flex';
+            toolbarButton.classList.add('active');
+            STATE.activeWidget = widgetName;
+            sysLog(`WORKSTATION: ${widgetName.toUpperCase()} ONLINE`, "SYS");
+        }
+    }
+
+    // --- REMINDER FUNCTIONS ---
+
+ function parseTimeInput(input) {
+    const now = new Date();
+    const inputTrimmed = input.trim();
+
+    // 1. **优先解析 YYYYMMDDHHMM 格式 (12位数字)**
+    const dateMatch = inputTrimmed.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+    
+    if (dateMatch) {
+        const [, yearStr, monthStr, dayStr, hourStr, minuteStr] = dateMatch;
+        
+        // 尝试创建日期对象
+        const targetDate = new Date(
+            parseInt(yearStr), 
+            parseInt(monthStr) - 1, // JS月份是 0-indexed
+            parseInt(dayStr), 
+            parseInt(hourStr), 
+            parseInt(minuteStr), 
+            0, 
+            0
+        );
+
+        // --- 日期有效性验证 ---
+        const inputMonth = parseInt(monthStr);
+        const inputDay = parseInt(dayStr);
+        
+        if (
+            isNaN(targetDate.getTime()) ||
+            targetDate.getFullYear() !== parseInt(yearStr) ||
+            targetDate.getMonth() + 1 !== inputMonth || // 月份验证，防止滚转
+            targetDate.getDate() !== inputDay // 日期验证，防止滚转（如 2月30日）
+        ) {
+             sysLog(`Invalid date/time values: ${inputTrimmed}.`, "ALERT");
+            return null;
+        }
+
+        // 检查解析出的时间是否在过去
+        if (targetDate.getTime() <= now.getTime()) {
+            sysLog(`Date/Time ${inputTrimmed} is in the past.`, "ALERT");
+            return null;
+        }
+
+        return targetDate.getTime();
+    }
+
+    // 2. **回退到现有的相对时间/简单时间解析逻辑**
+    let targetDate = new Date(now.getTime()); 
+    let processedInput = inputTrimmed;
+
+    // 检查 "tomorrow" 或 "明天"
+    const wasTomorrowSpecified = /(tomorrow|明天)/i.test(processedInput);
+    if (wasTomorrowSpecified) {
+        targetDate.setDate(now.getDate() + 1);
+        processedInput = processedInput.replace(/(tomorrow|明天)/i, '');
+    }
+    
+    // 清理时间分隔符
+    processedInput = processedInput.replace(/at |@ /i, '').trim();
+
+    // 匹配 HH(:MM)? (AM|PM)? 格式
+    let timeMatch = processedInput.match(/(\d{1,2})(:(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?/i);
+    
+    if (!timeMatch) {
+        // 既不是 YYYYMMDDHHMM 格式，又没有匹配到简单时间格式
+        return null; 
+    }
+
+    // 解析 HH:MM AM/PM
+    let hours = parseInt(timeMatch[1]);
+    let minutes = timeMatch[3] ? parseInt(timeMatch[3]) : 0;
+    let ampm = timeMatch[4] ? timeMatch[4].toLowerCase().replace(/\./g, '') : null;
+
+    if (ampm === 'pm' && hours < 12) {
+        hours += 12;
+    } else if (ampm === 'am' && hours === 12) {
+        hours = 0; 
+    }
+    
+    // 设置时间到目标日期
+    targetDate.setHours(hours, minutes, 0, 0); 
+
+    // 如果没有明确指定“明天” AND 计算出的时间点在过去，则推迟到明天
+    if (!wasTomorrowSpecified && targetDate.getTime() <= now.getTime()) {
+        targetDate.setDate(targetDate.getDate() + 1);
+        sysLog(`Time in the past, scheduling for tomorrow.`, "DAT");
+    }
+
+    return targetDate.getTime();
+}
+
+function saveReminders() {
+    const serializableReminders = STATE.reminders.map(r => ({
+        id: r.id,
+        title: r.title,
+        timestamp: r.timestamp,
+        completed: r.completed
+    }));
+    localStorage.setItem('starship_reminders', JSON.stringify(serializableReminders));
+}
+
+function loadReminders() {
+    const stored = localStorage.getItem('starship_reminders');
+    if (stored) {
+        try {
+            const loaded = JSON.parse(stored);
+            STATE.reminders = loaded.map(r => ({ ...r, timeoutId: null })); 
+            
+            const maxId = STATE.reminders.reduce((max, r) => Math.max(max, r.id || 0), 0);
+            STATE.reminderIdCounter = maxId + 1;
+            
+        } catch (e) {
+            console.error("Failed to parse stored reminders.", e);
+            STATE.reminders = [];
+        }
+    }
+    renderReminders();
+    scheduleAlerts(); 
+}
+
+function scheduleAlerts() {
+    STATE.reminders.forEach(r => {
+        if (r.timeoutId) clearTimeout(r.timeoutId);
+    });
+
+    STATE.reminders.filter(r => !r.completed).forEach(r => {
+        const timeUntil = r.timestamp - Date.now();
+        if (timeUntil > 0) {
+            r.timeoutId = setTimeout(() => {
+                alert(`🚨 MISSION ALERT: ${r.title} is now due!`);
+                sysLog(`REMINDER: ${r.title}`, "ALERT");
+                r.completed = true; // Mark as completed after alert
+                renderReminders();
+                saveReminders();
+            }, timeUntil);
+        } else {
+            // If the reminder is in the past, but not completed, alert immediately and mark complete
+            if (!r.completed) {
+                alert(`🚨 MISSED ALERT: ${r.title} was due at ${new Date(r.timestamp).toLocaleTimeString()}`);
+                sysLog(`MISSED REMINDER: ${r.title}`, "ALERT");
+                r.completed = true;
+                renderReminders();
+                saveReminders();
+            }
+        }
+    });
+}
+
+function renderReminders() {
+    const list = document.getElementById('reminder-list');
+    // **确保 list 元素存在**
+    if (!list) {
+        console.error("DOM Error: #reminder-list element not found.");
+        // 注意：这里保留了 sysLog，请确保 sysLog 函数存在于您的代码中
+        sysLog("ERROR: Reminder list DOM missing.", "ALERT"); 
+        return;
+    }
+    
+    list.innerHTML = '';
+    if (STATE.reminders.length === 0) {
+        list.innerHTML = '<li class="no-reminders">No scheduled reminders.</li>';
+        return;
+    }
+
+    STATE.reminders.sort((a, b) => a.timestamp - b.timestamp);
+
+    STATE.reminders.forEach(r => {
+        const li = document.createElement('li');
+        li.className = 'reminder-item';
+        const date = new Date(r.timestamp);
+        const formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const formattedTime = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+        li.innerHTML = `
+            <div class="reminder-title" style="color:${r.completed ? 'rgba(0, 224, 255, 0.4)' : '#fff'}; text-decoration: ${r.completed ? 'line-through' : 'none'};">
+                ${r.title} 
+                <i class="fas fa-check" style="margin-left:5px; color:${r.completed ? 'var(--star-blue)' : 'transparent'};"></i>
+            </div>
+            <div class="reminder-schedule">
+                ${formattedDate} ${formattedTime}
+            </div>
+        `;
+        
+        const deleteBtn = document.createElement('i');
+        deleteBtn.className = 'fas fa-trash-alt delete-track-btn';
+        deleteBtn.title = 'Delete Reminder';
+        deleteBtn.style.alignSelf = 'flex-end';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            deleteReminder(r.id);
+        };
+        li.appendChild(deleteBtn);
+        
+        li.onclick = () => toggleReminderCompletion(r.id);
+
+        list.appendChild(li);
+    });
+}
+
+function manualAddReminder() {
+    const titleInput = document.getElementById('new-reminder-title');
+    const timeInput = document.getElementById('new-reminder-time');
+
+    // **确保输入框元素存在**
+    if (!titleInput || !timeInput) {
+        sysLog("DOM Error: Reminder input fields missing.", "ALERT");
+        return;
+    }
+    
+    const title = titleInput.value.trim();
+    const timeText = timeInput.value.trim();
+
+    if (title && timeText) {
+        const timestamp = parseTimeInput(timeText);
+        if (timestamp) {
+            const newReminder = {
+                id: STATE.reminderIdCounter++,
+                title: title,
+                timestamp: timestamp,
+                completed: false,
+                timeoutId: null
+            };
+            STATE.reminders.push(newReminder);
+            sysLog(`Scheduled reminder: ${title}`, "SYS");
+            titleInput.value = '';
+            timeInput.value = '';
+            toggleManualReminderInput(false);
+            renderReminders();
+            scheduleAlerts();
+            saveReminders();
+        } else {
+            sysLog(`Invalid time format for reminder.`, "ALERT");
+        }
+    } else {
+        sysLog(`Reminder title and time cannot be empty.`, "ALERT");
+    }
+}
+
+function toggleManualReminderInput(show) {
+    const inputDiv = document.getElementById('manual-reminder-input');
+    const toggleBtn = document.getElementById('toggle-manual-btn');
+    // **确保控制元素存在**
+    if (!inputDiv || !toggleBtn) return; 
+
+    if (show) {
+        inputDiv.style.display = 'block';
+        toggleBtn.style.display = 'none';
+    } else {
+        inputDiv.style.display = 'none';
+        toggleBtn.style.display = 'block';
+    }
+}
+
+function toggleReminderCompletion(id) {
+    const reminder = STATE.reminders.find(r => r.id === id);
+    if (reminder) {
+        reminder.completed = !reminder.completed;
+        sysLog(`Reminder ID ${id} marked as ${reminder.completed ? 'COMPLETED' : 'PENDING'}`, "SYS");
+        renderReminders();
+        saveReminders();
+        scheduleAlerts();
+    }
+}
+
+function deleteReminder(id) {
+    STATE.reminders = STATE.reminders.filter(r => r.id !== id);
+    sysLog(`Reminder ID ${id} deleted.`, "SYS");
+    renderReminders();
+    saveReminders();
+    scheduleAlerts(); // Clears timeout if it was scheduled
+}
+// --- END REMINDER FUNCTIONS ---
+
+/**
+ * 切换浏览器浮窗的显示状态。
+ * @param {boolean} show - 强制显示 (true) 或关闭 (false)。
+ */
+function toggleBrowser(show) {
+    const browserWidget = document.getElementById('browser-widget');
+    const browserLogo = document.getElementById('browser-logo');
+    const shouldOpen = (typeof show === 'boolean') ? show : (browserWidget.style.display === 'none' || !browserWidget.style.display);
+    
+    if (shouldOpen) {
+        // 打开时加载默认页面
+        browserWidget.style.display = 'flex';
+        // 确保地址栏显示当前加载的 URL (如果已有)
+        const iframe = document.getElementById('embedded-iframe');
+        const addressBar = document.getElementById('web-address-bar');
+        if (iframe.src === 'about:blank' || !iframe.src) {
+             // 默认加载一个安全且兼容的页面
+             loadURL('https://en.wikipedia.org/wiki/Legal_English'); 
+        } else {
+             // 地址栏同步显示当前 URL
+             addressBar.value = iframe.src;
+        }
+        browserLogo.classList.add('active'); 
+        sysLog("WEB INTERFACE ONLINE", "SYS");
+    } else {
+        browserWidget.style.display = 'none';
+        browserLogo.classList.remove('active'); 
+        sysLog("WEB INTERFACE OFFLINE", "SYS");
+    }
+}
+
+/**
+ * 加载新的 URL 到 iframe 中，并处理 URL 格式。
+ * @param {string} url - 用户输入的 URL。
+ */
+function loadURL(url) {
+    let targetUrl = url.trim();
+
+    // 1. 尝试修正 URL 协议
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://') && targetUrl !== 'about:blank') {
+        // 尝试添加 HTTPS 协议
+        targetUrl = 'https://' + targetUrl;
+    }
+
+    // 2. 更新 iframe
+    const iframe = document.getElementById('embedded-iframe');
+    iframe.src = targetUrl;
+    
+    // 3. 更新地址栏显示
+    document.getElementById('web-address-bar').value = targetUrl;
+    sysLog(`WEB: Loading ${targetUrl.substring(0, 50)}...`, "DAT");
+}
+
+
+// =================================================================
+// 拖动和地址栏事件初始化
+// =================================================================
+
+function initBrowserControls() {
+    const browserLogo = document.getElementById('browser-logo');
+    const addressBar = document.getElementById('web-address-bar');
+    const dragHandle = document.getElementById('browser-drag-handle');
+    const browserWidget = document.getElementById('browser-widget');
+    
+    // 1. Logo 点击事件
+    browserLogo.addEventListener('click', () => toggleBrowser());
+
+    // 2. 地址栏加载事件 (Enter 键)
+    addressBar.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+            loadURL(addressBar.value);
+            addressBar.blur();
+        }
+    });
+
+    // 3. 浮窗拖动逻辑 (重用 widget-header 上的 move 光标)
+    dragHandle.addEventListener('mousedown', (e) => {
+        // 阻止点击地址栏时触发拖动
+        if (e.target.id === 'web-address-bar' || e.target.classList.contains('widget-close')) {
+            return;
+        }
+        
+        isBrowserDragging = true;
+        dragElement = browserWidget;
+        
+        // 获取鼠标点击位置与浮窗左上角的位置差
+        dragStartX = e.clientX - browserWidget.offsetLeft;
+        dragStartY = e.clientY - browserWidget.offsetTop;
+        
+        dragHandle.style.cursor = 'grabbing';
+        e.preventDefault(); 
+    });
+}
+
+// 4. 全局鼠标事件监听器 (应用于所有可拖动部件，如果它们没有自己的逻辑)
+document.addEventListener('mousemove', (e) => {
+    if (!isBrowserDragging || !dragElement) return;
+
+    // 计算新的位置
+    const newX = e.clientX - dragStartX;
+    const newY = e.clientY - dragStartY;
+
+    // 应用位置
+    dragElement.style.left = newX + 'px';
+    dragElement.style.top = newY + 'px';
+    
+    // 移除 transform: translate(-50%, -50%)，避免冲突
+    dragElement.style.transform = 'none';
+});
+
+document.addEventListener('mouseup', () => {
+    if (isBrowserDragging) {
+        isBrowserDragging = false;
+        document.getElementById('browser-drag-handle').style.cursor = 'move';
+        dragElement = null;
+    }
+});
+
+
+// 5. 确保在系统启动或 DOMContentLoaded 后初始化控件
+// **注意:** 请将此函数调用添加到您的 `systemBoot()` 函数末尾或其他合适的初始化位置。
+
+
+    // --- MUSIC FUNCTIONS ---
+
+  // ==========================================================
+// --- MUSIC PLAYER ENHANCEMENTS (V12 Hierarchy) ---
+// ==========================================================
+ function initMusicPlayer() {
+    // 🚨 关键修复：检查 audioPlayer 是否已成功加载 DOM 元素
+    if (!STATE.audioPlayer) {
+        // 如果 audioPlayer 仍为 null，记录错误并安全退出
+        sysLog("CRITICAL: Audio player DOM element missing. Music functions disabled.", "ALERT");
+        return;
+    }
+
+    // Add default track
+    STATE.playlists[0].tracks.push({ id: STATE.trackIdCounter++, name: "Pulsar Rendezvous", artist: "Cygnus X-1", url: STATE.DEFAULT_MUSIC_LINK });
+    
+    // Initial setup
+    const defaultTrack = STATE.playlists[0].tracks[0];
+    STATE.currentTrack = { playlistId: STATE.playlists[0].id, trackId: defaultTrack.id };
+    
+    // 错误行修正：现在我们确定 STATE.audioPlayer 不是 null
+    STATE.audioPlayer.src = defaultTrack.url; // Pre-load source
+
+    // Setup listener for file input (folder import now enabled)
+    document.getElementById('folder-input').addEventListener('change', handleFileImport);
+    
+    // Setup listener for track end
+    STATE.audioPlayer.addEventListener('ended', handleTrackEnd);
+
+    updateMusicDisplay(defaultTrack.name, defaultTrack.artist);
+    renderPlaylist();
+}
+    
+    /** Imports audio files (including from folders) and adds them to the playlist. (V12 HIERARCHY) */
+    function handleFileImport(event) {
+        const files = event.target.files;
+        if (files.length === 0) return;
+
+        sysLog(`Found ${files.length} file(s) for import. Analyzing hierarchy...`, "DAT");
+        
+        const importGroups = {}; // { FolderName: [tracks] }
+        
+        Array.from(files).forEach(file => {
+            if (file.type.startsWith('audio/')) {
+                const url = URL.createObjectURL(file);
+                const path = file.webkitRelativePath; // e.g., "Folder A/Subfolder B/track.mp3"
+                
+                // 提取一级目录名作为 Playlist 名称
+                const pathParts = path.split('/');
+                const playlistName = pathParts.length > 1 ? pathParts[0] : STATE.playlists[0].name; // Use default if no folder
+
+                // 提取二级目录名作为 Artist/Album 名
+                const artist = pathParts.length > 2 ? pathParts[1] : (pathParts.length > 1 ? "Root Import" : "Unknown");
+                const trackName = pathParts[pathParts.length - 1]; // Always the filename
+
+                const track = { 
+                    id: STATE.trackIdCounter++, 
+                    name: trackName, 
+                    artist: artist, 
+                    url: url 
+                };
+                
+                if (!importGroups[playlistName]) {
+                    importGroups[playlistName] = [];
+                }
+                importGroups[playlistName].push(track);
+            }
+        });
+
+        let newPlaylistsCount = 0;
+        let newTracksCount = 0;
+        let firstNewTrack = null;
+
+        for (const name in importGroups) {
+            // Find existing playlist or create new one
+            let playlist = STATE.playlists.find(p => p.name === name);
+            
+            if (!playlist) {
+                playlist = {
+                    id: new Date().getTime() + Math.random(), // Unique ID for the folder/group
+                    name: name,
+                    tracks: []
+                };
+                STATE.playlists.push(playlist);
+                newPlaylistsCount++;
+            }
+            
+            // Add new tracks to the playlist
+            importGroups[name].forEach(track => {
+                // Simple check to prevent duplicates if importing the same file list multiple times
+                if (!playlist.tracks.find(t => t.url === track.url)) {
+                    playlist.tracks.push(track);
+                    newTracksCount++;
+                    if (!firstNewTrack) firstNewTrack = track;
+                }
+            });
+            
+            STATE.expandedPlaylists.add(playlist.id); // Auto-expand newly imported folder
+        }
+
+        if (newTracksCount > 0) {
+            sysLog(`Imported ${newTracksCount} tracks into ${newPlaylistsCount} new playlist folders.`, "SYS");
+            renderPlaylist();
+            // If nothing was playing, load the first new track and start playing
+            if (!STATE.currentTrack && firstNewTrack) {
+                const playlist = STATE.playlists.find(p => p.tracks.includes(firstNewTrack));
+                loadTrack(playlist.id, firstNewTrack.id);
+                toggleMusic(true);
+            }
+        } else {
+            speak("No valid audio files or no new files found.");
+        }
+        event.target.value = null; 
+    }
+
+    /** Toggles the expansion state of a playlist group. */
+    function togglePlaylistExpand(playlistId) {
+        if (STATE.expandedPlaylists.has(playlistId)) {
+            STATE.expandedPlaylists.delete(playlistId);
+        } else {
+            STATE.expandedPlaylists.add(playlistId);
+        }
+        renderPlaylist();
+    }
+    
+    /** Finds a track by its ID and returns its group and index. */
+    function findTrackById(trackId) {
+        for (const playlist of STATE.playlists) {
+            const trackIndex = playlist.tracks.findIndex(t => t.id === trackId);
+            if (trackIndex !== -1) {
+                return { playlist, trackIndex, track: playlist.tracks[trackIndex] };
+            }
+        }
+        return null;
+    }
+
+    /** Renders the playlist in the widget with hierarchy. */
+    function renderPlaylist() {
+        const ul = document.getElementById('playlist-list');
+        ul.innerHTML = '';
+        
+        // Calculate total track count
+        const totalTracks = STATE.playlists.reduce((sum, p) => sum + p.tracks.length, 0);
+        document.getElementById('playlist-count').innerText = totalTracks;
+
+        if (totalTracks === 0) {
+            ul.innerHTML = '<li class="no-reminders">Use the buttons below to add tracks.</li>';
+            return;
+        }
+
+        STATE.playlists.forEach((playlist) => {
+            if (playlist.tracks.length === 0) return;
+
+            // --- Playlist Group Header ---
+            const headerLi = document.createElement('li');
+            headerLi.className = 'playlist-group-header';
+            
+            const isExpanded = STATE.expandedPlaylists.has(playlist.id);
+            const iconClass = isExpanded ? 'fa-folder-open' : 'fa-folder';
+
+            headerLi.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; width:100%; padding: 5px 8px; cursor:pointer;" 
+                     onclick="togglePlaylistExpand(${playlist.id})">
+                    <span style="font-weight:bold; color:var(--star-glow);">
+                        <i class="fas ${iconClass}" style="margin-right:5px;"></i> ${playlist.name} (${playlist.tracks.length})
+                    </span>
+                    <i class="fas fa-trash delete-track-btn" onclick="event.stopPropagation(); deletePlaylistGroup(${playlist.id})" title="Remove entire folder"></i>
+                </div>
+            `;
+            ul.appendChild(headerLi);
+
+            // --- Playlist Tracks ---
+            if (isExpanded) {
+                playlist.tracks.forEach((track, index) => {
+                    const li = document.createElement('li');
+                    li.className = 'playlist-item';
+                    
+                    const isCurrent = STATE.currentTrack && STATE.currentTrack.trackId === track.id;
+                    if (isCurrent) {
+                        li.classList.add('current');
+                    }
+                    
+                    const name = track.name.length > 30 ? track.name.substring(0, 27) + '...' : track.name;
+                    
+                    li.innerHTML = `
+                        <span class="track-info" onclick="loadTrack(${playlist.id}, ${track.id})" title="${track.name} - ${track.artist}">
+                            ${index + 1}. ${name} <span style="opacity:0.6;">(${track.artist})</span>
+                        </span>
+                        <i class="fas fa-trash delete-track-btn" onclick="event.stopPropagation(); deleteTrack(${track.id})" title="Remove track"></i>
+                    `;
+                    
+                    ul.appendChild(li);
+                });
+            }
+        });
+        
+        // Ensure the current track is visible
+        const currentItem = ul.querySelector('.playlist-item.current');
+        if (currentItem) {
+            currentItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+    
+    /** Removes an entire playlist group (folder). */
+    function deletePlaylistGroup(playlistId) {
+        if (!confirm("Are you sure you want to delete this entire playlist folder?")) return;
+
+        sysLog(`Attempting to remove playlist group ID ${playlistId}`, "DAT");
+        
+        const initialLength = STATE.playlists.length;
+        
+        // Find the group name before deletion for logging
+        const groupName = STATE.playlists.find(p => p.id === playlistId)?.name || "Unknown Group";
+        
+        // Check if currently playing track is in this group
+        const isCurrentInGroup = STATE.currentTrack && STATE.playlists.some(p => 
+            p.id === playlistId && p.tracks.some(t => t.id === STATE.currentTrack.trackId)
+        );
+
+        STATE.playlists = STATE.playlists.filter(p => p.id !== playlistId);
+        STATE.expandedPlaylists.delete(playlistId);
+
+        if (STATE.playlists.length < initialLength) {
+            sysLog(`Removed playlist folder: ${groupName}.`, "DAT");
+            
+            if (isCurrentInGroup) {
+                // Stop music and try to load the first track of the remaining list
+                STATE.audioPlayer.pause();
+                STATE.musicPlaying = false;
+                STATE.currentTrack = null;
+                
+                // Find the first track in any remaining playlist
+                const firstTrackInRemaining = STATE.playlists.flatMap(p => p.tracks)[0];
+
+                if (firstTrackInRemaining) {
+                    const playlist = STATE.playlists.find(p => p.tracks.includes(firstTrackInRemaining));
+                    loadTrack(playlist.id, firstTrackInRemaining.id);
+                } else {
+                    updateMusicDisplay("Playlist Empty", "");
+                }
+            }
+            
+            renderPlaylist();
+        }
+    }
+
+    /** Removes a single track from the playlist by its unique ID. (V12 HIERARCHY) */
+    function deleteTrack(trackId) {
+        const trackInfo = findTrackById(trackId);
+        if (!trackInfo) return;
+
+        // 1. Remove the track from its playlist group
+        trackInfo.playlist.tracks.splice(trackInfo.trackIndex, 1);
+        sysLog(`Removed track: ${trackInfo.track.name} from group ${trackInfo.playlist.name}`, "DAT");
+
+        // 2. Cleanup empty playlist group
+        if (trackInfo.playlist.tracks.length === 0) {
+            STATE.playlists = STATE.playlists.filter(p => p.id !== trackInfo.playlist.id);
+            STATE.expandedPlaylists.delete(trackInfo.playlist.id);
+            sysLog(`Cleaned up empty playlist folder: ${trackInfo.playlist.name}`, "DAT");
+        }
+        
+        // 3. Adjust current playback state if the deleted track was the current one
+        if (STATE.currentTrack && STATE.currentTrack.trackId === trackId) {
+            STATE.audioPlayer.pause();
+            STATE.musicPlaying = false;
+            
+            // Find the next available track in the flat list
+            const allTracks = STATE.playlists.flatMap(p => p.tracks);
+            const totalTracks = allTracks.length;
+
+            if (totalTracks > 0) {
+                // The track that takes the place of the deleted one (or the first one if all others are gone)
+                const nextTrack = allTracks[Math.min(trackInfo.trackIndex, totalTracks - 1)]; 
+
+                if (nextTrack) {
+                    const playlist = STATE.playlists.find(p => p.tracks.includes(nextTrack));
+                    loadTrack(playlist.id, nextTrack.id);
+                    toggleMusic(true);
+                }
+            } else {
+                STATE.currentTrack = null;
+                updateMusicDisplay("Playlist Empty", "");
+            }
+        }
+        
+        renderPlaylist();
+    }
+
+    /** Loads a specific track into the audio player (using playlistId and trackId). */
+    function loadTrack(playlistId, trackId) {
+        const trackInfo = findTrackById(trackId);
+        if (!trackInfo) {
+            sysLog("Track not found in playlist.", "ALERT");
+            return;
+        }
+        
+        STATE.currentTrack = { playlistId: playlistId, trackId: trackId };
+        const track = trackInfo.track;
+        
+        // Reset subtitle state
+        STATE.currentSubtitleIndex = 0;
+        clearInterval(STATE.subtitleIntervalId);
+
+        STATE.audioPlayer.src = track.url;
+        
+        STATE.audioPlayer.load();
+        
+        // Start playing if currently playing
+        if (STATE.musicPlaying) {
+            toggleMusic(true);
+        } else {
+             updateMusicDisplay(track.name, track.artist);
+        }
+        
+        sysLog(`Loaded track: ${track.name}`, "DAT");
+        renderPlaylist();
+        startSubtitleSimulation();
+    }
+
+    /** Updates music display using the current track state. */
+    function updateMusicDisplay(name = null, artist = null) {
+        const btn = document.getElementById('play-btn');
+        
+        if (STATE.currentTrack) {
+            const trackInfo = findTrackById(STATE.currentTrack.trackId);
+            if (trackInfo) {
+                document.getElementById('track-name').innerText = trackInfo.track.name;
+                document.getElementById('artist-name').innerText = trackInfo.track.artist;
+            }
+        } else {
+             document.getElementById('track-name').innerText = name || "No Track Loaded";
+             document.getElementById('artist-name').innerText = artist || "";
+        }
+        
+        if (STATE.musicPlaying) {
+            btn.classList.remove('fa-play');
+            btn.classList.add('fa-pause');
+            btn.classList.add('play');
+            startSubtitleSimulation(); 
+        } else {
+            btn.classList.remove('fa-pause');
+            btn.classList.add('fa-play');
+            btn.classList.remove('play');
+            clearInterval(STATE.subtitleIntervalId);
+        }
+        
+        // Update play mode buttons
+        document.getElementById('shuffle-btn').classList.remove('active-mode');
+        document.getElementById('repeat-btn').classList.remove('active-mode');
+
+        if (STATE.playMode === 'shuffle') {
+            document.getElementById('shuffle-btn').classList.add('active-mode');
+            document.getElementById('repeat-btn').title = "列表循环/单曲循环";
+        } else if (STATE.playMode === 'repeat') {
+            document.getElementById('repeat-btn').classList.add('active-mode');
+            document.getElementById('repeat-btn').title = "单曲循环";
+        } else {
+            document.getElementById('repeat-btn').title = "列表循环";
+        }
+    }
+
+    /** Toggles music playback. */
+    function toggleMusic(play = null) {
+        const totalTracks = STATE.playlists.reduce((sum, p) => sum + p.tracks.length, 0);
+
+        if (totalTracks === 0) {
+            speak("The playlist is empty. Please import audio files.");
+            return;
+        }
+        
+        if (!STATE.currentTrack) {
+            // Load the first available track
+            const firstTrack = STATE.playlists.flatMap(p => p.tracks)[0];
+            if (firstTrack) {
+                const playlist = STATE.playlists.find(p => p.tracks.includes(firstTrack));
+                loadTrack(playlist.id, firstTrack.id);
+            }
+        }
+        
+        STATE.musicPlaying = (play !== null) ? play : !STATE.musicPlaying;
+        
+        if (STATE.musicPlaying) {
+            STATE.audioPlayer.play().then(() => {
+                sysLog("MUSIC: RESUMED", "DAT");
+            }).catch(e => {
+                sysLog("MUSIC ERROR: Playback blocked. " + e, "ALERT");
+                STATE.musicPlaying = false;
+                speak("Playback blocked. Please click the play button manually once or check browser settings.");
+            });
+        } else {
+            STATE.audioPlayer.pause();
+            sysLog("MUSIC: PAUSED", "DAT");
+        }
+        updateMusicDisplay();
+    }
+    
+    /** Gets the next track in the flattened list based on play mode. */
+    function getNextTrack() {
+        // 1. Create a flat list of all tracks
+        const allTracks = [];
+        STATE.playlists.forEach(p => allTracks.push(...p.tracks));
+        const total = allTracks.length;
+        
+        if (total === 0) return null;
+
+        let currentTrackIndex = -1;
+        if (STATE.currentTrack) {
+            currentTrackIndex = allTracks.findIndex(t => t.id === STATE.currentTrack.trackId);
+        }
+
+        if (currentTrackIndex === -1) {
+            return allTracks[0]; 
+        }
+
+        if (STATE.playMode === 'repeat') {
+            return allTracks[currentTrackIndex]; // Stay on same track
+        } else if (STATE.playMode === 'shuffle') {
+            let nextIndex;
+            do {
+                nextIndex = Math.floor(Math.random() * total);
+            } while (nextIndex === currentTrackIndex && total > 1);
+            return allTracks[nextIndex];
+        } else { // 'list'
+            const nextIndex = (currentTrackIndex + 1) % total;
+            
+            // If looping back to the start, only return the first track if the list is long enough OR if looping is implied (we assume list mode loops unless only 1 track)
+            if (nextIndex === 0 && total === 1) {
+                 return null; // Single track in list mode, don't loop indefinitely
+            }
+            return allTracks[nextIndex];
+        }
+    }
+
+    /** Skips track (next or previous). */
+    function skipTrack(direction) {
+        let nextTrack;
+        
+        // 1. Get flat list
+        const allTracks = STATE.playlists.flatMap(p => p.tracks);
+        const total = allTracks.length;
+        if (total === 0) return;
+        
+        let currentTrackIndex = -1;
+        if (STATE.currentTrack) {
+            currentTrackIndex = allTracks.findIndex(t => t.id === STATE.currentTrack.trackId);
+        }
+        // If no track loaded, start from the beginning/end
+        if (currentTrackIndex === -1) {
+             currentTrackIndex = (direction === 'next' ? -1 : 0);
+        }
+
+        if (direction === 'next') {
+            const nextIndex = (currentTrackIndex + 1) % total;
+            nextTrack = allTracks[nextIndex];
+        } else if (direction === 'prev') {
+            const prevIndex = (currentTrackIndex - 1 + total) % total;
+            nextTrack = allTracks[prevIndex];
+        }
+        
+        if (nextTrack) {
+            const playlist = STATE.playlists.find(p => p.tracks.includes(nextTrack));
+            loadTrack(playlist.id, nextTrack.id);
+            toggleMusic(true);
+        } else {
+            sysLog("Playlist end reached.", "DAT");
+            toggleMusic(false);
+        }
+    }
+
+    /** Handles what happens when a track ends. */
+    function handleTrackEnd() {
+        sysLog("Track finished. Determining next action...", "DAT");
+        
+        const nextTrack = getNextTrack();
+
+        if (nextTrack && (!STATE.currentTrack || nextTrack.id !== STATE.currentTrack.trackId)) {
+            // Play next track in shuffle/list mode
+            const playlist = STATE.playlists.find(p => p.tracks.includes(nextTrack));
+            loadTrack(playlist.id, nextTrack.id); 
+            toggleMusic(true);
+        } else if (STATE.playMode === 'repeat' && nextTrack && STATE.currentTrack && nextTrack.id === STATE.currentTrack.trackId) {
+            // Repeat mode: reload and restart the same track
+            loadTrack(STATE.currentTrack.playlistId, STATE.currentTrack.trackId);
+            toggleMusic(true);
+        } else {
+            // End of list (list mode without looping)
+            toggleMusic(false);
+            renderPlaylist();
+        }
+    }
+
+    /** Sets the play mode and updates UI. */
+    function setPlayMode(mode) {
+        if (mode === 'shuffle') {
+            STATE.playMode = (STATE.playMode === 'shuffle') ? 'list' : 'shuffle';
+            sysLog(`Play Mode: ${STATE.playMode === 'shuffle' ? 'Shuffle (随机)' : 'List Loop (列表循环)'}`, "SYS");
+        } else if (mode === 'repeat') {
+            STATE.playMode = (STATE.playMode === 'repeat') ? 'list' : 'repeat';
+            sysLog(`Play Mode: ${STATE.playMode === 'repeat' ? 'Repeat Single (单曲循环)' : 'List Loop (列表循环)'}`, "SYS");
+        }
+        updateMusicDisplay();
+    }
+
+    /** Seeks forward or backward by 10 seconds. */
+    function seekMusic(seconds) {
+        if (!STATE.audioPlayer.src) return;
+        STATE.audioPlayer.currentTime += seconds;
+        sysLog(`Seek: ${seconds > 0 ? '+' : ''}${seconds}s`, "DAT");
+    }
+
+    // --- SUBTITLE/LEARNING FUNCTIONS (Simulation) ---
+    
+    /** Starts interval for simulating subtitle display. */
+    function startSubtitleSimulation() {
+        clearInterval(STATE.subtitleIntervalId);
+        
+        if (!STATE.musicPlaying) return; 
+
+        // Reset subtitle index if a new track starts
+        if (STATE.currentSubtitleIndex >= STATE.SIMULATED_LYRICS.length) {
+             STATE.currentSubtitleIndex = 0;
+        }
+        
+        // Display initial line immediately
+        document.getElementById('current-subtitle').textContent = STATE.SIMULATED_LYRICS[STATE.currentSubtitleIndex];
+        STATE.currentSubtitleIndex = (STATE.currentSubtitleIndex + 1) % STATE.SIMULATED_LYRICS.length;
+
+        // This simulates a new subtitle line every 4 seconds
+        STATE.subtitleIntervalId = setInterval(() => {
+            const nextLine = STATE.SIMULATED_LYRICS[STATE.currentSubtitleIndex];
+            const subtitleElement = document.getElementById('current-subtitle');
+            
+            if (nextLine) {
+                subtitleElement.textContent = nextLine;
+                STATE.currentSubtitleIndex = (STATE.currentSubtitleIndex + 1) % STATE.SIMULATED_LYRICS.length;
+            } else {
+                // Should not happen with the modulo, but safety reset
+                subtitleElement.textContent = "[Simulation Loop Reset]";
+                STATE.currentSubtitleIndex = 0; 
+            }
+        }, 4000); 
+    }
+
+    /** Implements '单句重读' (Repeat Sentence). */
+    function speakCurrentSentence() {
+        stopSpeech();
+        const sentence = document.getElementById('current-subtitle').textContent;
+        if (sentence.startsWith('[')) {
+            speak("Simulation mode active. Cannot repeat track data placeholder.");
+            return;
+        }
+        speak(sentence, 1.0); 
+    }
+
+    /** Implements '单词重读' (Repeat Word by Word). */
+    function speakWordByWord() {
+        if (STATE.speaking) {
+            stopSpeech();
+            return;
+        }
+        
+        const sentence = document.getElementById('current-subtitle').textContent;
+        if (sentence.startsWith('[')) {
+            speak("Simulation mode active. Cannot repeat track data placeholder.");
+            return;
+        }
+        
+        const cleanSentence = sentence.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
+        const words = cleanSentence.split(/\s+/).filter(word => word.length > 0);
+        let wordIndex = 0;
+        
+        const wasPlaying = STATE.musicPlaying;
+        if (wasPlaying) toggleMusic(false);
+
+        // Define readNextWord outside the loop so it can be scheduled recursively
+        function readNextWord() {
+            if (wordIndex < words.length) {
+                const word = words[wordIndex];
+                speak(word, 0.7); 
+                wordIndex++;
+                
+                // Use onend for clean scheduling
+                speechSynthesis.onend = () => {
+                    setTimeout(readNextWord, 1000); 
+                    speechSynthesis.onend = null; // Clear handler
+                };
+            } else {
+                sysLog("LEARNING: Word-by-word practice finished.", "SYS");
+                if (wasPlaying) toggleMusic(true); 
+            }
+        }
+        
+        sysLog("LEARNING: Starting word-by-word practice.", "SYS");
+        readNextWord();
+    }
+
+    /** Implements '停止/停止复读' (Stop Speech) and Replay. */
+    function stopSpeech() {
+        if (speechSynthesis.speaking) {
+            speechSynthesis.cancel();
+            STATE.speaking = false;
+            sysLog("LEARNING: Speech playback cancelled.", "DAT");
+            
+            // Resume music playback if it was paused for learning
+            if (STATE.audioPlayer.paused && STATE.musicPlaying) {
+                 STATE.audioPlayer.play();
+            }
+            return true;
+        }
+        // If not speaking, treat the button press as a command to re-read the sentence (重播)
+        else {
+            speakCurrentSentence(); 
+            return false;
+        }
+    }
+
+
+
+
+    // --- CALENDAR FUNCTIONS ---
+
+    /** Renders the calendar grid for a specific month (Dec 2025). */
+    function renderCalendar() {
+        const calendarBody = document.getElementById('calendar-body');
+        const today = new Date();
+        const currentYear = 2025; // Fixed year for HMI demo
+        const currentMonth = 11; // December is 11
+
+        // Clear existing days, keep headers (already in HTML)
+        while (calendarBody.children.length > 7) {
+            calendarBody.removeChild(calendarBody.lastChild);
+        }
+
+        // Get the first day of the month (Dec 1, 2025 is a Monday)
+        const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0 (Sun) to 6 (Sat)
+        const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate(); // 31
+
+        // Add padding days for alignment
+        for (let i = 0; i < firstDayOfMonth; i++) {
+            const emptyDay = document.createElement('div');
+            emptyDay.className = 'cal-day';
+            calendarBody.appendChild(emptyDay);
+        }
+
+        // Add actual days
+        for (let day = 1; day <= daysInMonth; day++) {
+            const dayElement = document.createElement('div');
+            dayElement.className = 'cal-day';
+            dayElement.textContent = day;
+
+            // Highlight today (Dec 3rd)
+            if (currentYear === today.getFullYear() && currentMonth === today.getMonth() && day === 3) {
+                dayElement.classList.add('today');
+            }
+
+            // Mock events (e.g., 8, 14, 21)
+            if ([8, 14, 21].includes(day)) {
+                dayElement.classList.add('event');
+            }
+
+            calendarBody.appendChild(dayElement);
+        }
+    }
+
+   // --- BOOT ---
+// --- CORE BOOT FUNCTION ---
+async function systemBoot() {
+    
+    const startButton = document.getElementById('start-btn');
+    
+    // 【第 1 道防线】: 防止代码重复执行 (如用户反复点击)
+    if (STATE.booted) {
+        if (typeof sysLog === 'function') sysLog("System is already operational.", "SYS");
+        if (startButton) startButton.disabled = true; // 确保按钮仍然被禁用
+        return; 
+    }
+    
+    // 立即禁用按钮并显示日志，防止用户再次点击
+    if (startButton) {
+        startButton.disabled = true; // <--- 关键修正：防止重复点击
+        startButton.style.display = 'none';
+    }
+    
+    const log = document.getElementById('boot-log');
+    if (log) log.style.display = 'block';
+
+    // =========================================================
+    // 1. 核心初始化 (非阻塞)
+    // =========================================================
+    STATE.audioPlayer = document.getElementById('audio-player');
+    if (STATE.audioPlayer) {
+        STATE.audioPlayer.src = STATE.DEFAULT_MUSIC_LINK;
+        STATE.audioPlayer.load();
+    } else {
+        console.error("Audio player element ('audio-player') not found. Music feature disabled.");
+    }
+    
+    renderCalendar();
+    renderReminders();
+    
+    // =========================================================
+    // 2. Camera & AI (Await operations)
+    // =========================================================
+    if (log) log.innerText = "ACCESSING FLIGHT SENSORS...";
+    
+    try {
+        // 这里的 await startCamera() 包含了 navigator.mediaDevices.getUserMedia()
+        await startCamera(); // ✅ 启动摄像头
+        
+        if (log) log.innerText = "LOADING NEURAL NETWORK (MEDIAPIPE)...";
+        await initHands(); // ✅ 初始化 MediaPipe
+        
+    } catch (e) {
+        // 捕获 'NotReadableError: Device in use' 或权限错误
+        if (typeof sysLog === 'function') sysLog(`FATAL ERROR: ${e.name}. Hand tracking disabled.`, "ALERT");
+        console.error("Failed to start media stream:", e);
+        
+        // 即使摄像头失败，系统仍然可以继续启动
+    }
+    
+    // 3. Map & Voice & Core Systems (Non-blocking operations)
+    if (log) log.innerText = "INITIALIZING HMI CORE SYSTEMS...";
+    initMap();
+    startVoiceLoop();
+    initClock();
+    startStatusSim();
+    
+    initMusicPlayer(); 
+    
+    // === 核心浏览器浮窗初始化 ===
+    initBrowserControls(); // 确保浏览器事件监听器被绑定
+    
+    // 4. UI Reveal
+    if (log) log.innerText = "SYSTEM BOOT COMPLETE. GOING ONLINE...";
+    
+    setTimeout(() => {
+        const screen = document.getElementById('boot-screen');
+        if (screen) {
+            screen.style.opacity = '0';
+            setTimeout(() => screen.remove(), 1000);
+        }
+
+        STATE.booted = true;
+        document.getElementById('map-layer').classList.add('active');
+
+        speak("Flight systems and workstation online. H M I initiated.");
+        if (typeof sysLog === 'function') sysLog("TRY: 'GO TO STARBASE', 'CHECK WEATHER', OR 'ADD REMINDER TO CHECK FUEL'", "SYS");
+
+        setTimeout(() => { if(STATE.map) STATE.map.invalidateSize(); }, 800);
+    }, 1000);
+}
+// 确保在这个 } 之后，直到文件末尾，没有其他代码了！
+    // --- MAP ---
+      function initMap() {
+        if (STATE.map) STATE.map.remove();
+        
+        STATE.map = L.map('map', {
+            center: STATE.defaultLoc,
+            zoom: 13,
+            zoomControl: false,
+            attributionControl: false,
+            dragging: true
+        });
+
+        STATE.tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+        }).addTo(STATE.map);
+
+        document.querySelector('#map-layer .leaflet-layer').classList.remove('true-color');
+
+        document.getElementById('radar-sweep').style.pointerEvents = 'none';
+
+        STATE.currentMarker = L.marker(STATE.defaultLoc).addTo(STATE.map)
+            .bindPopup("Starship Command Center").openPopup();
+            
+        STATE.map.invalidateSize(); 
+    }
+
+    function toggleColorMode(isTrueColor) {
+        const layer = document.querySelector('#map-layer .leaflet-layer');
+        if (layer) {
+            if (isTrueColor) {
+                layer.classList.add('true-color');
+                sysLog("RADAR: True color mode engaged.", "SYS");
+            } else {
+                layer.classList.remove('true-color');
+                sysLog("RADAR: HMI tactical filter engaged.", "SYS");
+            }
+        }
+    }
+
+   function toggleFullscreen(enable) {
+    const panel = document.getElementById('radar-panel');
+    
+    // 关键修改：如果没有传入 'enable' 参数（即按钮点击），则反转当前状态
+    const shouldEnable = (enable !== undefined && enable !== null) ? enable : !STATE.fullscreen;
+
+    if(shouldEnable) { // 启用全屏
+        panel.classList.add('fullscreen');
+        STATE.fullscreen = true;
+        speak("Maximizing display.");
+    } else { // 禁用全屏 (最小化)
+        panel.classList.remove('fullscreen');
+        STATE.fullscreen = false;
+        speak("Minimizing display.");
+    }
+    setTimeout(() => { if(STATE.map) STATE.map.invalidateSize(); }, 500);
+}
+
+    function toggleDetailedImage(enable) {
+        const tiles = document.querySelectorAll('.leaflet-layer');
+        STATE.detailedMode = enable;
+
+        tiles.forEach(t => {
+            if(enable) t.classList.add('true-color');
+            else t.classList.remove('true-color');
+        });
+
+        if(enable) {
+            speak("Visual mode: high resolution.");
+            sysLog("VISUALS: HIGH RES", "SYS");
+        } else {
+            speak("Visual mode: tactical overlay.");
+            sysLog("VISUALS: TACTICAL", "SYS");
+        }
+    }
+
+    async function checkWeather() {
+        if(!STATE.map) return;
+        const center = STATE.map.getCenter();
+        const lat = center.lat.toFixed(2);
+        const lng = center.lng.toFixed(2);
+
+        sysLog(`SCANNING EXTERNAL ENVIRONMENT...`, "SYS");
+        speak("Scanning atmospheric conditions.");
+
+        try {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if(data.current_weather) {
+                const temp = data.current_weather.temperature;
+                const code = data.current_weather.weathercode;
+                const desc = WMO_CODES[code] || "Unknown";
+
+                const box = document.getElementById('weather-box');
+                const disp = document.getElementById('weather-display');
+                const sub = document.getElementById('weather-desc');
+
+                box.style.opacity = '1';
+                box.style.border = '1px solid var(--star-blue)';
+                disp.innerText = `${temp}°C`;
+                sub.innerText = desc.toUpperCase();
+
+                speak(`Temperature is ${temp} degrees celsius. Conditions are ${desc}.`);
+                sysLog(`TEMP: ${temp}C | ${desc.toUpperCase()}`, "DAT");
+            }
+        } catch(e) {
+            console.error(e);
+            speak("Unable to connect to external sensors.");
+            sysLog("SENSOR DATA ERROR", "ERR");
+        }
+    }
+
+    function goToLocation(city) {
+        const coords = CITIES[city.toLowerCase()];
+        if(coords) {
+            speak("Routing map to " + city);
+            STATE.map.flyTo(coords, 13, { duration: 2.5 });
+            sysLog("NAV: " + city.toUpperCase(), "SYS");
+        } else {
+            speak("Unknown destination.");
+        }
+    }
+
+    // --- SIMULATION & UTILS ---
+    function startStatusSim() {
+        const hex = document.getElementById('hex-dump');
+        const cpu = document.getElementById('cpu-bar');
+        const net = document.getElementById('net-bar');
+
+        setInterval(() => {
+            // Hex dump
+            const newHex = Math.random().toString(16).substring(2, 10).toUpperCase();
+            hex.innerText = `0x${newHex} :: COMM_BUFF\n` + hex.innerText.substring(0, 100);
+
+            // Random bar movement
+            cpu.style.width = Math.floor(Math.random() * 60 + 20) + '%';
+            net.style.width = Math.floor(Math.random() * 40 + 50) + '%';
+        }, 300);
+    }
+
+    function initClock() {
+        setInterval(() => {
+            const d = new Date();
+            document.getElementById('sys-clock').innerText = d.toLocaleTimeString('en-US', {hour12:false});
+        }, 1000);
+    }
+
+    function sysLog(msg, type) {
+        const feed = document.getElementById('log-feed');
+        const line = document.createElement('div');
+        // Use a new class for JARVIS/AI responses to distinguish them
+        line.className = type === 'SYS' ? 'msg-sys' : (type === 'USR' ? 'msg-usr' : 'msg-jarvis');
+        line.innerText = `[${type}] ${msg}`;
+        feed.prepend(line);
+        if(feed.children.length > 5) feed.lastChild.remove();
+    }
+
+    // === 调用 Dify 工作流 ===
+    async function callDifyWorkflow(userText) {
+        if (!DIFY_CONFIG.endpoint || !DIFY_CONFIG.apiKey) {
+            console.warn("Dify config missing");
+            return null;
+        }
+
+        sysLog("ROUTING TO FLIGHT AI...", "SYS");
+
+        try {
+            const body = {
+                inputs: {
+                    [DIFY_CONFIG.inputKey]: userText
+                },
+                response_mode: "blocking",
+                user: "starship-hmi-user"
+            };
+
+            const t0 = performance.now();
+            const res = await fetch(DIFY_CONFIG.endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${DIFY_CONFIG.apiKey}`
+                },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            const t1 = performance.now();
+
+            console.log("Dify workflow raw response:", data);
+            sysLog(`AI LATENCY: ${(t1 - t0).toFixed(0)}ms`, "SYS");
+
+            let reply = null;
+            if (data && data.data && data.data.outputs) {
+                reply = data.data.outputs[DIFY_CONFIG.outputKey];
+            }
+            if (!reply && data.answer) {
+                reply = data.answer;
+            }
+
+            if (!reply) {
+                sysLog("AI CORE: NO REPLY FIELD", "ERR");
+                return null;
+            }
+
+            return reply;
+        } catch (e) {
+            console.error("Dify workflow error:", e);
+            sysLog("AI CORE ERROR", "ERR");
+            return null;
+        }
+    }
+
+    // === 把语音指令交给 Dify，并让系统说出来 ===
+    async function handleAIWithDify(cmd) {
+        const reply = await callDifyWorkflow(cmd);
+        if (reply) {
+            speak(reply);
+        } else {
+            speak("I received your command, but the flight AI did not respond.");
+        }
+    }
+
+    // --- VOICE ---
+    function startVoiceLoop() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if(!SR) { sysLog("VOICE ERROR: API UNAVAILABLE", "ERR"); return; }
+
+        STATE.recognition = new SR();
+        STATE.recognition.continuous = false;
+        STATE.recognition.lang = 'en-US';
+        STATE.recognition.interimResults = false;
+
+        STATE.recognition.onstart = () => {
+            const v = document.getElementById('voice-status');
+            v.innerText = "LISTENING";
+            v.style.color = "var(--star-blue)";
+        };
+
+        STATE.recognition.onend = () => {
+            const v = document.getElementById('voice-status');
+            v.innerText = "STANDBY";
+            v.style.color = "var(--alert-red)";
+            if (STATE.booted && !STATE.speaking) {
+                setTimeout(() => { try { STATE.recognition.start(); } catch(e){} }, 200);
+            }
+        };
+
+        STATE.recognition.onresult = (event) => {
+            processCommand(event.results[0][0].transcript.toLowerCase());
+        };
+
+        try { STATE.recognition.start(); } catch(e) {}
+    }
+
+    function processCommand(cmd) {
+        sysLog(cmd.toUpperCase(), "USR");
+
+        let handled = false;
+
+        // --- NEW WORKSTATION/REMINDER COMMANDS ---
+        if(cmd.includes('open calendar') || cmd.includes('show schedule')) { toggleWidget('calendar', true); handled = true; }
+        else if(cmd.includes('close calendar') || cmd.includes('hide schedule')) { toggleWidget('calendar', false); handled = true; }
+        else if(cmd.includes('open reminders') || cmd.includes('show reminders')) { toggleWidget('reminder', true); handled = true; }
+        else if(cmd.includes('close reminders') || cmd.includes('hide reminders')) { toggleWidget('reminder', false); handled = true; }
+        else if(cmd.includes('open music') || cmd.includes('show music')) { toggleWidget('music', true); handled = true; }
+        else if(cmd.includes('close music') || cmd.includes('hide music')) { toggleWidget('music', false); handled = true; }
+        else if(cmd.includes('pause music') || cmd.includes('stop music')) { toggleMusic(false); handled = true; }
+        else if(cmd.includes('play music') || cmd.includes('play starbase anthem') || cmd.includes('resume music')) {
+            // If the audio element source is empty, set default
+            if (!STATE.audioPlayer.src) {
+                 STATE.audioPlayer.src = STATE.DEFAULT_MUSIC_LINK;
+                 STATE.audioPlayer.load();
+            }
+            toggleMusic(true);
+            handled = true;
+        }
+        else if(cmd.includes('add reminder to') || cmd.includes('remind me to')) {
+            const reminderText = cmd.replace(/^(add reminder to|remind me to)\s+/i, '').trim();
+            if(reminderText.length > 5) {
+                addReminder(reminderText);
+                handled = true;
+            } else {
+                speak("Please specify the content of the reminder.");
+                handled = true;
+            }
+        }
+        else if(cmd.includes('play music link')) {
+            const urlMatch = cmd.match(/(http|https):\/\/\S+/i);
+            if (urlMatch) {
+                loadAndPlayMusic(urlMatch[0]);
+                handled = true;
+            }
+        }
+
+
+        // --- EXISTING MAP/UTILITY COMMANDS ---
+        else if(cmd.includes('open map') || cmd.includes('show display')) {
+            document.getElementById('map-layer').classList.add('active');
+            speak("Geospatial display online.");
+            handled = true;
+        }
+        else if(cmd.includes('close map') || cmd.includes('hide display')) {
+            document.getElementById('map-layer').classList.remove('active');
+            speak("Geospatial display offline.");
+            handled = true;
+        }
+        else if(cmd.includes('full screen') || cmd.includes('maximize display')) {
+            toggleFullscreen(true);
+            handled = true;
+        }
+        else if(cmd.includes('minimize') || cmd.includes('standard view') || cmd.includes('exit fullscreen')) {
+            toggleFullscreen(false);
+            handled = true;
+        }
+        else if((cmd.includes('zoom in') || cmd.includes('increase zoom')) && STATE.map) {
+            STATE.map.zoomIn();
+            handled = true;
+        }
+        else if(cmd.includes('zoom out') && STATE.map) {
+            STATE.map.zoomOut();
+            handled = true;
+        }
+
+        else if(cmd.includes('go to') || cmd.includes('route to')) {
+            for(let city in CITIES) {
+                if(cmd.includes(city)) {
+                    goToLocation(city);
+                    handled = true;
+                    break;
+                }
+            }
+        }
+        else if(cmd.includes('reset map') && STATE.map) {
+            STATE.map.setView(STATE.defaultLoc, 13);
+            speak("Map display reset.");
+            handled = true;
+        }
+
+        else if(cmd.includes('high resolution') || cmd.includes('true color') || cmd.includes('remove filter')) {
+            toggleDetailedImage(true);
+            handled = true;
+        }
+        else if(cmd.includes('tactical view') || cmd.includes('blue mode') || cmd.includes('standard visuals')) {
+            toggleDetailedImage(false);
+            handled = true;
+        }
+        else if(cmd.includes('check weather') || cmd.includes('atmospheric report') || cmd.includes('conditions')) {
+            checkWeather();
+            handled = true;
+        }
+
+        // 如果没有命中任何本地指令，就交给 Dify 工作流
+        if (!handled) {
+            handleAIWithDify(cmd);
+        }
+    }
+
+    function speak(text) {
+        if(!window.speechSynthesis) return;
+        if (STATE.recognition) try { STATE.recognition.stop(); } catch(e){}
+        STATE.speaking = true;
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'en-US'; u.pitch = 0.9; u.rate = 1.1;
+        u.onend = () => { STATE.speaking = false; if (STATE.booted) try { STATE.recognition.start(); } catch(e){} };
+        window.speechSynthesis.speak(u);
+        sysLog(text, "FLIGHT AI");
+    }
+
+    // --- CAMERA & HANDS --- (No functional changes here)
+    let videoElement, canvasElement, canvasCtx;
+    let hands;
+    let handMode = 'HOVER';
+    let lastHandX=0, lastHandY=0, zoomRefY=0;
+
+    async function startCamera() {
+        videoElement = document.getElementById('cam-feed');
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+        videoElement.srcObject = stream;
+        return new Promise(resolve => videoElement.onloadedmetadata = () => {
+            videoElement.play();
+            resolve();
+        });
+    }
+
+    async function initHands() {
+        canvasElement = document.getElementById('hand-canvas');
+        canvasCtx = canvasElement.getContext('2d');
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onHandResults);
+
+        const detectFrame = async () => {
+            await hands.send({image: videoElement});
+            requestAnimationFrame(detectFrame);
+        };
+        detectFrame();
+    }
+
+    function resizeCanvas() {
+        canvasElement.width = window.innerWidth;
+        canvasElement.height = window.innerHeight;
+    }
+
+    function drawLine(ctx, lm, i, j) {
+        const p1 = lm[i]; const p2 = lm[j];
+        ctx.beginPath();
+        ctx.moveTo(p1.x * ctx.canvas.width, p1.y * ctx.canvas.height);
+        ctx.lineTo(p2.x * ctx.canvas.width, p2.y * ctx.canvas.height);
+        ctx.stroke();
+    }
+
+    function onHandResults(results) {
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        const cursor = document.getElementById('hand-cursor');
+        const log = document.getElementById('hand-log');
+
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            log.innerText = "ONLINE";
+            log.style.color = "var(--star-blue)";
+            cursor.style.display = 'block';
+
+            canvasCtx.strokeStyle = "var(--star-blue)"; // Cyan Skeleton
+            canvasCtx.lineWidth = 3;
+            for (const lm of results.multiHandLandmarks) {
+                // Drawing connections (no change in structure)
+                drawLine(canvasCtx, lm, 0, 1); drawLine(canvasCtx, lm, 1, 2); drawLine(canvasCtx, lm, 2, 3); drawLine(canvasCtx, lm, 3, 4);
+                drawLine(canvasCtx, lm, 0, 5); drawLine(canvasCtx, lm, 5, 6); drawLine(canvasCtx, lm, 6, 7); drawLine(canvasCtx, lm, 7, 8);
+                drawLine(canvasCtx, lm, 0, 9); drawLine(canvasCtx, lm, 9, 10); drawLine(canvasCtx, lm, 10, 11); drawLine(canvasCtx, lm, 11, 12);
+                drawLine(canvasCtx, lm, 0, 13); drawLine(canvasCtx, lm, 13, 14); drawLine(canvasCtx, lm, 14, 15); drawLine(canvasCtx, lm, 15, 16);
+                drawLine(canvasCtx, lm, 0, 17); drawLine(canvasCtx, lm, 17, 18); drawLine(canvasCtx, lm, 18, 19); drawLine(canvasCtx, lm, 19, 20);
+                drawLine(canvasCtx, lm, 5, 9); drawLine(canvasCtx, lm, 9, 13); drawLine(canvasCtx, lm, 13, 17); drawLine(canvasCtx, lm, 0, 17);
+            }
+
+            const lm = results.multiHandLandmarks[0];
+            const index = lm[8]; const thumb = lm[4];
+            const x = (1 - index.x) * window.innerWidth;
+            const y = index.y * window.innerHeight;
+
+            cursor.style.left = x + 'px';
+            cursor.style.top = y + 'px';
+
+            const dist = Math.hypot(index.x - thumb.x, index.y - thumb.y);
+
+            if (dist < 0.05) { // Pinch
+                cursor.className = 'drag';
+                if(handMode !== 'DRAG') { handMode = 'DRAG'; lastHandX = x; lastHandY = y; }
+                if(STATE.map) {
+                    const dx = x - lastHandX;
+                    const dy = y - lastHandY;
+                    STATE.map.panBy([-dx, -dy], {animate: false});
+                    lastHandX = x; lastHandY = y;
+                }
+            } else if (dist > 0.15) { // Open
+                cursor.className = 'zoom';
+                if(handMode !== 'ZOOM') { handMode = 'ZOOM'; zoomRefY = y; }
+                if(Date.now() > STATE.zoomLock) {
+                    const dy = zoomRefY - y;
+                    if(Math.abs(dy) > 40) {
+                        const dir = dy > 0 ? 1 : -1;
+                        STATE.map.setZoom(STATE.map.getZoom() + dir);
+                        zoomRefY = y;
+                        STATE.zoomLock = Date.now() + 500;
+                    }
+                }
+            } else {
+                cursor.className = '';
+                handMode = 'HOVER';
+            }
+
+        } else {
+            cursor.style.display = 'none';
+            log.innerText = "SCANNING...";
+            log.style.color = "#fff";
+        }
+    }
+
+</script>
+</body>
+</html>
